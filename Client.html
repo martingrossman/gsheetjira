@@ -37,10 +37,17 @@
   const isCloud = !!(window.google && google.script && google.script.run);
   const storageKey = 'sheetflow.project.v1';
   const draftStorageKey = 'sheetflow.pending-drafts.v1';
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const uiStorageKey = 'sheetflow.ui.v1';
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], collapsedEpics: {}, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', draggingId = null, timelineDrag = null, suppressClickUntil = 0, toastTimer;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
+  try { state.collapsedEpics = JSON.parse(localStorage.getItem(uiStorageKey) || '{}').collapsedEpics || {}; } catch (ignore) { state.collapsedEpics = {}; }
+  function setEpicCollapsed(id, collapsed) {
+    if (!id) return;
+    if (collapsed) state.collapsedEpics[id] = true; else delete state.collapsedEpics[id];
+    localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics }));
+  }
   function draftKey(input) { return input?.id || '__new__'; }
   function saveDraft(input, version) {
     const key = draftKey(input); if (!key) return;
@@ -241,10 +248,17 @@
   function renderBoard(issues) {
     const epics = C.sorted(issues.filter(issue => issue.type === 'Epic'));
     const lanes = epics.map(epic => ({ id: epic.id, label: epic.summary, items: issues.filter(issue => issue.id === epic.id || inEpic(issue) && issue.id !== epic.id && (() => { let current = issue; const seen = new Set(); while (current && !seen.has(current.id)) { if (current.parentId === epic.id) return true; seen.add(current.id); current = issueById(current.parentId); } return false; })()) })).concat([{ id: '', label: 'No epic', items: issues.filter(issue => !epics.some(epic => issue.id === epic.id || inEpicWithin(issue, epic.id))) }]);
-    $('#view-content').innerHTML = `<div class="swimlanes">${lanes.map(lane => `<section class="swimlane" data-epic-lane="${escape(lane.id)}"><header class="swimlane-header"><span class="epic-dot"></span><strong>${escape(lane.label)}</strong><span>${lane.items.length} items</span></header><div class="board">${C.statuses.map((status, index) => {
-      const cards = lane.items.filter(i => i.status === status);
-      return `<section class="column" data-status="${status}" aria-label="${status} in ${lane.label}" style="--status-color:${statusColors[index]}"><h2 class="column-header"><span class="status-dot"></span>${status}<span class="column-count">${cards.length}</span><button data-new="${status}" aria-label="Open full task editor for ${status}">+</button></h2><div class="card-list">${cards.map(card).join('') || '<div class="column-empty">A little room for what’s next</div>'}</div><div class="column-quick-add"><select data-quick-kind="${status}" aria-label="New work item kind"><option value="Task">Task</option><option value="Story">Story</option><option value="Epic">Epic</option></select><input data-quick-title="${status}" maxlength="250" placeholder="Add a task, story, or epic…" aria-label="Add task, story, or epic to ${status}"><button data-quick-add="${status}" aria-label="Add task, story, or epic to ${status}">＋</button></div></section>`;
-    }).join('')}</div></section>`).join('')}</div>`;
+    $('#view-content').innerHTML = `<div class="swimlanes">${lanes.map(lane => {
+      const workItems = lane.items.filter(issue => issue.type !== 'Epic');
+      const done = workItems.filter(issue => issue.status === 'Done').length;
+      const progress = workItems.length ? Math.round(done / workItems.length * 100) : 0;
+      const collapsed = Boolean(lane.id && state.collapsedEpics[lane.id]);
+      const board = C.statuses.map((status, index) => {
+        const cards = lane.items.filter(i => i.status === status);
+        return `<section class="column" data-status="${status}" aria-label="${status} in ${lane.label}" style="--status-color:${statusColors[index]}"><h2 class="column-header"><span class="status-dot"></span>${status}<span class="column-count">${cards.length}</span><button data-new="${status}" aria-label="Open full task editor for ${status}">+</button></h2><div class="card-list">${cards.map(card).join('') || '<div class="column-empty">A little room for what’s next</div>'}</div><div class="column-quick-add"><select data-quick-kind="${status}" aria-label="New work item kind"><option value="Task">Task</option><option value="Story">Story</option><option value="Epic">Epic</option></select><input data-quick-title="${status}" maxlength="250" placeholder="Add a task, story, or epic…" aria-label="Add task, story, or epic to ${status}"><button data-quick-add="${status}" aria-label="Add task, story, or epic to ${status}">＋</button></div></section>`;
+      }).join('');
+      return `<section class="swimlane${collapsed ? ' collapsed' : ''}" data-epic-lane="${escape(lane.id)}"><header class="swimlane-header"><span class="epic-dot"></span><strong>${escape(lane.label)}</strong><span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span>${lane.id ? `<button type="button" class="swimlane-toggle" data-toggle-lane="${escape(lane.id)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}">${collapsed ? '+' : '−'}</button>` : ''}</header>${collapsed ? '' : `<div class="board">${board}</div>`}</section>`;
+    }).join('')}</div>`;
   }
   function inEpicWithin(issue, epicId) { let current = issue, seen = new Set(); while (current && !seen.has(current.id)) { if (current.id === epicId) return true; seen.add(current.id); current = issueById(current.parentId); } return false; }
   function renderSheet(issues) {
@@ -385,9 +399,10 @@
   $('#close-help').addEventListener('click', () => $('#help-dialog').close());
   $('#view-content').addEventListener('click', event => {
     if (state.busy || Date.now() < suppressClickUntil) return;
-    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-timeline], [data-bar]');
+    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-timeline], [data-bar], [data-toggle-lane]');
     if (!target) return;
-    if (target.hasAttribute('data-quick-add')) { const input = target.parentElement.querySelector('[data-quick-title]'); input.dataset.quickKind = target.parentElement.querySelector('[data-quick-kind]').value; createQuickTask(target.dataset.quickAdd, input); }
+    if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
+    else if (target.hasAttribute('data-quick-add')) { const input = target.parentElement.querySelector('[data-quick-title]'); input.dataset.quickKind = target.parentElement.querySelector('[data-quick-kind]').value; createQuickTask(target.dataset.quickAdd, input); }
     else if (target.hasAttribute('data-new')) openIssue('', { status: target.dataset.new, parentId: state.epic });
     else if (target.hasAttribute('data-clear')) clearFilters();
     else if (target.hasAttribute('data-sort')) { state.ascending = state.sort === target.dataset.sort ? !state.ascending : true; state.sort = target.dataset.sort; render(); }
@@ -429,12 +444,14 @@
     event.preventDefault(); const id = draggingId, issue = issueById(id); draggingId = null;
     const target = event.target.closest('.card'); clearDragStyle();
     if (!issue || target?.dataset.issue === id) return;
-    const neighbors = C.sorted(state.issues.filter(i => i.status === column.dataset.status && i.id !== id));
+    const lane = column.closest('.swimlane'), laneId = lane?.dataset.epicLane || '';
+    const neighbors = C.sorted(state.issues.filter(i => i.status === column.dataset.status && i.id !== id && (laneId ? inEpicWithin(i, laneId) : !state.issues.some(epic => epic.type === 'Epic' && inEpicWithin(i, epic.id)))));
     const targetIndex = target ? neighbors.findIndex(i => i.id === target.dataset.issue) : -1;
     let rank;
     if (targetIndex >= 0) rank = (neighbors[targetIndex].rank + (targetIndex ? neighbors[targetIndex - 1].rank : 0)) / 2;
     else rank = (neighbors.at(-1)?.rank || 0) + 1000;
-    try { await persist({ ...issue, status: column.dataset.status, rank }, issue.version, 'Board updated'); }
+    const parentId = issue.type === 'Epic' ? issue.parentId : laneId || '';
+    try { await persist({ ...issue, status: column.dataset.status, parentId, rank }, issue.version, 'Board updated'); }
     catch (error) { notify(error.message, true); }
   });
   $('#view-content').addEventListener('pointerdown', event => {

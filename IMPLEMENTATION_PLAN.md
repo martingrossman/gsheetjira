@@ -44,7 +44,7 @@ Work-package references point to section 6. Optional features in the requirement
 | 4.1. Vertical reordering | Partial: flat Kanban cards, including epic cards, can move vertically and persist `rank`. Sheet/Gantt initially consume rank order. | Vertical table/Gantt row moves, epic group moves, scope-aware consistency, keyboard Move up/down, undo, filtered/sorted behavior, concurrent ordering checks. Moving an epic card currently does not move its children as a group; the epic sidebar also ignores rank. | WP-05, WP-07, WP-11 |
 | 5. Task list | Implemented: editable table, search, one-column sorting, detail links. Partial: columns and filters. | Per-column configuration rather than primary/all toggle; grouping; saved views; subtask tree; project/priority/tag/date filters; blocked/overdue/unassigned row highlighting; repository/branch/PR links. | WP-01, WP-06, WP-10 |
 | 6. Kanban | Implemented: status columns, drag moves/reorder, card fields and fixed kind icons. Partial: Add issue opens a form; keyboard opens cards. | Inline column creation; dependency/blocker indicators; configurable WIP limits; keyboard movement and ordering; configurable badges and new statuses. | WP-03, WP-04, WP-05, WP-07 |
-| 6.1. Epic swimlanes | Missing: epic sidebar filtering is not swimlane grouping. | Epic/assignee/project grouping; aligned columns; collapse/expand; No epic lane; atomic cross-column/cross-epic moves; epic totals and completion; vertical lane order. | WP-05, WP-07 |
+| 6.1. Epic swimlanes | Partial: Kanban now renders aligned status columns inside one lane per epic, includes a `No epic` lane, shows per-lane item counts/completion, remembers collapsed lanes, and reparents cards when dropped into another epic lane. | Epic/assignee/project grouping; atomic server-side cross-column/cross-epic moves; vertical lane order; keyboard lane movement; dependency/blocker indicators and WIP limits. | WP-05, WP-07 |
 | 6.2. Filters | Partial: one type, status, assignee, sprint and one epic; reset; combined search; state survives view switches in the same session. | Multi-type selection; saved filters/grouping; persisted views; stronger active-filter display. | WP-04, WP-06 |
 | 7. Gantt | Implemented: day/week scales, horizontal move, right-edge resize, calendar-day duration preservation, progress, dependency lines, today and weekend markers. | Month zoom, milestones, holiday/leave/overdue overlays, separate unscheduled tray and drop-to-schedule, grouping, vertical order, conflict warnings, optional propagation, scheduling undo, working-day mode and explicit overrides. | WP-05, WP-08, WP-11, WP-12 |
 | 8. Team/capacity | Missing: assignees are unvalidated text names. | Team tab; stable people/agent identities; roles, active status, workweek, hours/day, default assignees; history-preserving deactivation; workload and overload; availability; agent concurrency limits. | WP-01, WP-02, WP-08, WP-10, WP-12 |
@@ -265,10 +265,10 @@ The default Kanban presentation is epic swimlanes: lanes run horizontally across
 
 **Dependencies:** WP-03–WP-06. **Requirements:** 6, 6.1, 6.2.
 
-- [ ] Add No grouping / Epic / Assignee / Project selectors with aligned status columns, collapsible groups and an explicit No epic lane.
-- [ ] Support vertical group order and shared task ordering. Use inline quick-add with the lane/column's defaults.
-- [ ] Use one move command for status + epic + destination order. Validate parent/descendant membership before moving across epics.
-- [ ] Show incomplete dependencies, blocker reason, epic counts and completion, configured category/attribute badges, and WIP counts/limits. Define warn-versus-block behavior for each WIP setting.
+- [ ] Add No grouping / Epic / Assignee / Project selectors; Epic grouping currently has aligned status columns, collapsible groups and an explicit No epic lane.
+- [ ] Support vertical group order and shared task ordering. Inline quick-add remains available, but lane/column defaults are not yet fully persisted.
+- [ ] Replace the current client-side status/parent/rank save with one server-side move command and validate parent/descendant membership before moving across epics.
+- [x] Show epic item counts and completion; dependency/blocker indicators, configured category/attribute badges, and WIP counts/limits remain outstanding. Define warn-versus-block behavior for each WIP setting.
 - [ ] Support keyboard status/lane moves and vertical Move up/down with the same server rules as drag-and-drop.
 
 **Acceptance:** a cross-column/cross-epic drag is one audited, undoable operation; an invalid hierarchy move is rejected coherently; collapsed lanes retain state; WIP limits and dependency/blocker indicators reflect current data; the board remains usable without a mouse.
