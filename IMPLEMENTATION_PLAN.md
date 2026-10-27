@@ -66,6 +66,8 @@ Work-package references point to section 6. Optional features in the requirement
 
 ### 4.1 Required workbook structure
 
+Comments are append-only task activity records with stable comment IDs, task ID, author, created/updated timestamps, body text, and edit metadata. The detail editor shows the full comment thread; Kanban and Gantt provide a compact add-comment action; card/row hover previews the three newest comment lines without replacing the task description.
+
 | Tab | Records and ownership |
 |---|---|
 | `Tasks` | One row per task/story/subtask. Stable IDs and explicit relationships; business fields remain visible and editable according to sheet permissions. |

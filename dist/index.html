@@ -18,6 +18,7 @@
 .epic-nav{grid-template-columns:minmax(0,1fr)}.epic-nav button{max-width:100%;overflow:hidden}
 @media(max-width:520px){.gantt-grid{--label-width:195px}.gantt-legend{flex-wrap:wrap}}
 </style>
+<style>.comments-section{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}.comment-item{border-bottom:1px solid #edf0e8;padding:9px 0}.comment-item small{display:block;color:#98a18f;font-size:9px;margin-bottom:5px}.comment-item textarea,#new-comment{display:block;width:100%;min-height:54px;border:1px solid #dfe5d9;border-radius:5px;padding:7px;font-size:10px;resize:vertical;margin-bottom:5px}.comment-item .button{height:26px;font-size:9px;padding:0 9px}</style>
 <style>.column-quick-add{display:flex;gap:5px;margin-top:4px}.column-quick-add select{width:67px;border:1px solid transparent;border-radius:5px;background:transparent;padding:0 2px;font-size:8px;color:#7f8e74}.column-quick-add select:focus,.column-quick-add select:hover{border-color:#d5dfcc;background:#fff;outline:none}.column-quick-add input{flex:1;min-width:0;border:1px solid transparent;border-radius:5px;background:transparent;padding:7px 6px;font-size:9px}.column-quick-add input:hover,.column-quick-add input:focus{border-color:#d5dfcc;background:#fff;outline:none}.column-quick-add button{width:28px;border-radius:5px;color:#9aa58e;font-size:16px}.column-quick-add button:hover{background:#e9eee2;color:var(--green)}</style>
 <style>.quick-entry{display:flex;gap:8px;margin:18px 0 4px;padding:10px;background:#f4f6f0;border:1px solid #e4e9de;border-radius:7px}.quick-entry input{flex:1;min-width:0;border:1px solid var(--line);border-radius:5px;padding:0 11px;height:34px;background:#fff;font-size:11px}.quick-entry input:focus{outline:2px solid #d6e4cd;border-color:#8fab82}.quick-entry .button{height:34px;font-size:10px}</style>
 
@@ -63,7 +64,7 @@
         <div class="form-grid"><label class="field">Issue type<select name="type"></select></label><label class="field">Status<select name="status"></select></label><label class="field">Priority<select name="priority"></select></label><label class="field">Parent issue<select name="parentId"></select></label><label class="field">Assignee<input name="assignee" list="people" maxlength="200" placeholder="Unassigned"></label><label class="field">Reporter<input name="reporter" list="people" maxlength="200" placeholder="Your name"></label><label class="field">Start date<input name="startDate" type="date" min="1900-01-01" max="2200-12-31"></label><label class="field">Due date<input name="dueDate" type="date" min="1900-01-01" max="2200-12-31"></label><label class="field">Estimate (hours)<input name="estimate" type="number" min="0" step="0.25"></label><label class="field">Time spent (hours)<input name="timeSpent" type="number" min="0" step="0.25"></label><label class="field">Progress (%)<input name="progress" type="number" min="0" max="100" step="1"></label><label class="field">Sprint<input name="sprint" list="sprints" maxlength="200" placeholder="e.g. Sprint 01"></label></div>
         <label class="field">Labels<input name="labels" maxlength="2000" placeholder="design, frontend, research"><small>Separate labels with commas.</small></label>
         <label class="field">Depends on<input name="dependencies" maxlength="2000" placeholder="PRJ-4, PRJ-5"><small>Issue IDs, separated by commas. Dependencies do not automatically move dates.</small></label>
-        <div id="issue-metadata" class="issue-metadata"></div><div id="child-issues"></div>
+        <div id="issue-metadata" class="issue-metadata"></div><div id="comments-section" class="comments-section"></div><div id="child-issues"></div>
       </div>
       <div class="dialog-footer"><button type="button" id="delete-issue" class="button danger" hidden>Delete issue</button><div><button type="button" id="cancel-dialog" class="button secondary">Cancel</button><button type="submit" id="save-issue" class="button primary">Save issue</button></div></div>
     </form>
@@ -227,7 +228,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   const isCloud = !!(window.google && google.script && google.script.run);
   const storageKey = 'sheetflow.project.v1';
   const draftStorageKey = 'sheetflow.pending-drafts.v1';
-  const state = { issues: [], settings: [], drafts: {}, quickQueue: [], ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', draggingId = null, timelineDrag = null, suppressClickUntil = 0, toastTimer;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
@@ -252,12 +253,13 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const raw = localStorage.getItem(storageKey);
     if (raw === null) {
       const issues = C.sample(today()).map(i => ({ ...i, version: crypto.randomUUID() }));
-      const db = { issues, sequence: issues.length };
+      const db = { issues, comments: [], sequence: issues.length };
       localStorage.setItem(storageKey, JSON.stringify(db));
       return db;
     }
     const db = JSON.parse(raw);
     if (!db || !Array.isArray(db.issues) || !Number.isInteger(db.sequence)) throw new Error('The browser project could not be read. Export or back up this browser’s storage before repairing it.');
+    if (!Array.isArray(db.comments)) db.comments = [];
     const seen = new Set();
     for (const issue of db.issues) {
       if (!issue.id || seen.has(issue.id)) throw new Error('Browser project contains missing or duplicate IDs.');
@@ -268,7 +270,17 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   async function rpc(method, ...args) {
     if (isCloud) return new Promise((resolve, reject) => google.script.run.withSuccessHandler(resolve).withFailureHandler(error => reject(new Error(error.message || String(error))))[method](...args));
     const db = getLocal();
-    if (method === 'getProject') return { issues: db.issues, spreadsheetUrl: '', name: 'Sample project' };
+    if (method === 'getProject') return { issues: db.issues, comments: db.comments.reduce((map, comment) => { (map[comment.taskId] ||= []).push(comment); return map; }, {}), settings: [], spreadsheetUrl: '', name: 'Sample project' };
+    if (method === 'addTaskComment') {
+      const [taskId, body] = args, comment = { id: 'COM-' + crypto.randomUUID(), taskId, authorId: 'browser-user', body: body.trim(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), editedBy: '' };
+      if (!comment.body || comment.body.length > 5000) throw new Error('Comment must contain between 1 and 5,000 characters.');
+      db.comments.push(comment); localStorage.setItem(storageKey, JSON.stringify(db)); return comment;
+    }
+    if (method === 'updateTaskComment') {
+      const [commentId, body] = args, comment = db.comments.find(item => item.id === commentId);
+      if (!comment) throw new Error('Comment not found.'); if (!body.trim() || body.length > 5000) throw new Error('Comment must contain between 1 and 5,000 characters.');
+      comment.body = body.trim(); comment.updatedAt = new Date().toISOString(); comment.editedBy = 'browser-user'; localStorage.setItem(storageKey, JSON.stringify(db)); return comment;
+    }
     if (method === 'saveIssue') {
       const [input, version] = args;
       const current = db.issues.find(i => i.id === input.id);
@@ -311,7 +323,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (state.busy || timelineDrag) return;
     setBusy(true); if (!quiet) syncText('Loading…');
     try {
-      const project = await rpc('getProject'); state.issues = project.issues.map(withDraft); state.settings = project.settings || []; state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
+      const project = await rpc('getProject'); state.issues = project.issues.map(withDraft); state.comments = project.comments || {}; state.settings = project.settings || []; state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
       $('#error-banner').hidden = true;
       $('#connection-title').textContent = isCloud ? 'Connected to Google Sheets' : 'Browser demo';
       $('#connection-detail').textContent = isCloud ? 'Shared data. Three ways to work.' : 'Sample data saved on this browser.';
@@ -351,6 +363,12 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     finally { if (!state.busy && state.quickQueue.length) { const next = state.quickQueue.shift(); input.value = next.title; input.dataset.quickKind = next.kind; createQuickTask(next.status, input); } }
   }
   function issueById(id) { return state.issues.find(i => i.id === id); }
+  function commentPreview(id) { return (state.comments[id] || []).slice(-3).map(comment => comment.body).join('\n'); }
+  function renderComments(id) {
+    const comments = state.comments[id] || [];
+    if (!id) { $('#comments-section').innerHTML = ''; return; }
+    $('#comments-section').innerHTML = `<h3 class="child-heading">Comments (${comments.length})</h3>${comments.map(comment => `<div class="comment-item"><small>${escape(comment.authorId || 'Unknown')} · ${escape(timestamp(comment.createdAt))}</small><textarea data-comment-edit="${escape(comment.id)}" maxlength="5000">${escape(comment.body)}</textarea><button type="button" class="button subtle" data-comment-save="${escape(comment.id)}">Save comment</button></div>`).join('')}<textarea id="new-comment" maxlength="5000" placeholder="Add a comment…" aria-label="New comment"></textarea><button type="button" class="button secondary" id="add-comment">Add comment</button>`;
+  }
   function inEpic(issue) {
     if (!state.epic) return true;
     let current = issue; const seen = new Set();
@@ -478,6 +496,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     $('#issue-metadata').innerHTML = id ? `Created ${escape(timestamp(issue.createdAt))}<br>Updated ${escape(timestamp(issue.updatedAt))}${issue.completedDate ? `<br>Completed ${escape(shortDate(issue.completedDate))}` : ''}` : '';
     const children = state.issues.filter(i => i.parentId === id && id);
     $('#child-issues').innerHTML = children.length ? `<h3 class="child-heading">Child issues (${children.length})</h3>${children.map(i => `<button type="button" class="child-link" data-child="${escape(i.id)}">${typeIcon(i.type)}<strong>${escape(i.id)}</strong> ${escape(i.summary)}</button>`).join('')}` : '';
+    renderComments(id);
     initialForm = formSnapshot(); if (!dialog.open) dialog.showModal(); form.elements.summary.focus();
   }
   function closeIssue() {
@@ -527,6 +546,17 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   });
   form.elements.status.addEventListener('change', () => { if (form.elements.status.value === 'Done') form.elements.progress.value = 100; else if (edited?.status === 'Done' && form.elements.progress.value === '100') form.elements.progress.value = 0; });
   $('#child-issues').addEventListener('click', event => { const target = event.target.closest('[data-child]'); if (target && closeIssue()) openIssue(target.dataset.child); });
+  $('#comments-section').addEventListener('click', async event => {
+    const add = event.target.closest('#add-comment'), save = event.target.closest('[data-comment-save]');
+    if (!edited || (!add && !save)) return;
+    const body = add ? $('#new-comment').value : event.target.parentElement.querySelector('[data-comment-edit]').value;
+    if (!body.trim()) return;
+    try {
+      const comment = add ? await rpc('addTaskComment', edited.id, body) : await rpc('updateTaskComment', save.dataset.commentSave, body);
+      state.comments[edited.id] = add ? [...(state.comments[edited.id] || []), comment] : (state.comments[edited.id] || []).map(item => item.id === comment.id ? comment : item);
+      renderComments(edited.id); notify('Comment saved');
+    } catch (error) { showError(error); }
+  });
   $('#delete-issue').addEventListener('click', async () => {
     if (!edited || state.busy) return;
     try { C.canDelete(edited.id, state.issues); } catch (error) { $('#form-error').textContent = error.message; $('#form-error').hidden = false; return; }
@@ -553,6 +583,10 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       const next = target.dataset.timeline === 'today' ? C.addDays(today(), -7) : C.addDays(state.timelineStart, Number(target.dataset.timeline) * 28);
       if (C.validDate(next) && next <= '2200-01-01') { state.timelineStart = next; render(); }
     } else openIssue(target.dataset.open || target.dataset.issue || target.dataset.bar);
+  });
+  $('#view-content').addEventListener('mouseover', event => {
+    const target = event.target.closest('[data-issue], [data-open]'); if (!target) return;
+    const id = target.dataset.issue || target.dataset.open, preview = commentPreview(id); if (preview) target.title = preview.split('\n').slice(-3).join('\n');
   });
   $('#view-content').addEventListener('keydown', event => { if (event.target.matches('.column-quick-add input') && event.key === 'Enter') { event.preventDefault(); event.target.dataset.quickKind = event.target.parentElement.querySelector('[data-quick-kind]').value; createQuickTask(event.target.dataset.quickTitle, event.target); } else if (event.target.matches('.card') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); openIssue(event.target.dataset.issue); } });
   $('#view-content').addEventListener('change', async event => {

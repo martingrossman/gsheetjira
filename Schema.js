@@ -27,6 +27,10 @@ var SheetFlowSchema = (function () {
       name: 'Change History',
       headers: ['Event ID', 'Operation ID', 'Entity Kind', 'Entity ID', 'Event Kind', 'Actor ID', 'Timestamp', 'Before Revision', 'After Revision', 'Changed Fields', 'Details']
     },
+    comments: {
+      name: 'Comments',
+      headers: ['Comment ID', 'Task ID', 'Author ID', 'Body', 'Created At', 'Updated At', 'Edited By']
+    },
     system: {
       name: '_System',
       headers: ['Key', 'Value', 'Updated At']

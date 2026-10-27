@@ -51,7 +51,9 @@ function getProject() {
   return withLock_(function () {
     authorizationService_().require('read');
     var book = getBook_();
-    return { issues: readIssues_(book), settings: typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [], spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() };
+    var issues = readIssues_(book), comments = {};
+    if (typeof SheetFlowComments !== 'undefined') issues.forEach(function (issue) { comments[issue.id] = SheetFlowComments.read(book, issue.id); });
+    return { issues: issues, comments: comments, settings: typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [], spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() };
   });
 }
 /** expectedVersion prevents an old browser tab overwriting a newer row. */
