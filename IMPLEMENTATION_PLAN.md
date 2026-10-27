@@ -79,6 +79,10 @@ Add a protected internal `_System` tab only for operational records that do not 
 
 ### 4.2 Field mapping and additions
 
+#### Orthogonal hierarchy and activity type
+
+`Kind` and `Task Type ID` are separate dimensions and must never be combined into one enum. `Kind` describes the work item's structural role and hierarchy (`Epic`, `Story`, `Task`, or `Subtask`). `Task Type ID` describes the activity category (`Algo`, `Data`, `Requirements`, `Bug`, or another configured category). Every task-like record may have both values: for example, a `Task` can be `Algo`, and a `Subtask` can be `Bug`. Projects and epics use `Kind` for hierarchy and do not require a task activity type. Board cards, list rows, Gantt rows, filters, badges, migration reports, and dashboard aggregations must preserve and display these dimensions independently.
+
 | Requirement fields | Current source | Migration / implementation |
 |---|---|---|
 | ID, Title, Description | `id`, `summary`, `description` | Preserve IDs and values; expose Summary as Title via a schema mapping. |
