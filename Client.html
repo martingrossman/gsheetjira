@@ -22,16 +22,16 @@
   };
   const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.circle}</svg>`;
   $$('[data-icon]').forEach(el => el.innerHTML = icon(el.dataset.icon));
-  const typeColors = { Epic: '#a28aba', Story: '#8baa78', Task: '#7da3b8', Bug: '#c58d7b' };
-  const statusColors = ['#9da58f', '#a5a1bd', '#759bb5', '#c3a469', '#83a375'];
-  const statusBg = ['#f0f2eb', '#efedf6', '#eaf1f6', '#f7f1e4', '#edf4e8'];
-  const typeIcon = type => `<span class="type-icon" style="--type-color:${typeColors[type] || '#8b9b83'}" title="${escape(type)}">${({ Epic: 'ϟ', Story: '▮', Task: '✓', Bug: '•' })[type] || '•'}</span>`;
+  const typeColors = { Epic: '#7C3AED', Story: '#0891B2', Task: '#2563EB', Bug: '#DC2626' };
+  const statusColors = ['#64748B', '#3B82F6', '#8B5CF6', '#D97706', '#16A34A'];
+  const statusBg = ['#F1F5F9', '#EFF6FF', '#F5F3FF', '#FFFBEB', '#F0FDF4'];
+  const typeIcon = type => `<span class="type-icon" style="--type-color:${typeColors[type] || '#64748B'}" title="${escape(type)}">${({ Epic: 'ϟ', Story: '▮', Task: '✓', Bug: '•' })[type] || '•'}</span>`;
   const today = () => { const d = new Date(); return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-'); };
   const shortDate = value => C.validDate(value) ? new Date(value + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'No date';
   const timestamp = value => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : '—';
   const initials = name => name.split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
   function avatar(name) {
-    const colors = ['#e1e9d3', '#eaded0', '#d8e6e9', '#e5dfeb'];
+    const colors = ['#DBEAFE', '#F3E8FF', '#CCFBF1', '#FFEDD5'];
     return `<span class="avatar ${name ? '' : 'unassigned'}" title="${escape(name || 'Unassigned')}" style="--avatar-bg:${colors[[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length]}">${escape(name ? initials(name) : '?')}</span>`;
   }
   const isCloud = !!(window.google && google.script && google.script.run);
@@ -174,13 +174,13 @@
     finally { setBusy(false); }
   }
   async function createQuickTask(status = 'Backlog', sourceInput = null) {
-    const input = sourceInput || $('#quick-title'), title = input.value.trim(), kind = input.dataset.quickKind || 'Task';
+    const input = sourceInput || $('#quick-title'), title = input.value.trim(), kind = input.dataset.quickKind || 'Task', parentId = kind === 'Epic' ? '' : (input.dataset.quickParentId || '');
     if (!title || !state.ready) return;
     input.value = '';
-    if (state.busy) { state.quickQueue.push({ title, status, kind }); syncText('Work item queued…'); return; }
-    try { await persist({ summary: title, type: kind, taskTypeId: 'algo', status, priority: 'Medium' }, undefined, `${kind} added`); }
+    if (state.busy) { state.quickQueue.push({ title, status, kind, parentId }); syncText('Work item queued…'); return; }
+    try { await persist({ summary: title, type: kind, taskTypeId: 'algo', status, priority: 'Medium', parentId }, undefined, `${kind} added`); }
     catch (ignore) {}
-    finally { if (!state.busy && state.quickQueue.length) { const next = state.quickQueue.shift(); input.value = next.title; input.dataset.quickKind = next.kind; createQuickTask(next.status, input); } }
+    finally { if (!state.busy && state.quickQueue.length) { const next = state.quickQueue.shift(); input.value = next.title; input.dataset.quickKind = next.kind; input.dataset.quickParentId = next.parentId || ''; createQuickTask(next.status, input); } }
   }
   function issueById(id) { return state.issues.find(i => i.id === id); }
   function commentPreview(id) { return (state.comments[id] || []).slice(-3).map(comment => comment.body).join('\n'); }
@@ -300,14 +300,14 @@
       const left = Math.max(0, rawStart) * dayWidth + 3, right = Math.min(days, rawEnd) * dayWidth - 3;
       const visible = scheduled && right > left;
       if (visible) positions.set(issue.id, { left, right, y: row * 45 + 22 });
-      const index = C.statuses.indexOf(issue.status), colors = { Epic: ['#efe8f5', '#9675b1', '#e1d3ec'], Story: ['#edf3e4', '#718b57', '#dce8c8'], Task: ['#e9f0f5', '#698aa1', '#d3e3ec'], Bug: ['#f7ede6', '#ad826a', '#efddcf'] }[issue.type] || ['#edf3e4', '#718b57', '#dce8c8'];
+      const index = C.statuses.indexOf(issue.status), colors = { Epic: ['#F5F3FF', '#6D28D9', '#DDD6FE'], Story: ['#ECFEFF', '#0E7490', '#A5F3FC'], Task: ['#EFF6FF', '#1D4ED8', '#BFDBFE'], Bug: ['#FEF2F2', '#B91C1C', '#FECACA'] }[issue.type] || ['#EFF6FF', '#1D4ED8', '#BFDBFE'];
       return `<div class="gantt-row"><button class="gantt-row-label" data-open="${escape(issue.id)}" title="${escape(issue.summary)}">${typeIcon(issue.type)}<span><strong>${escape(issue.id)}</strong>${escape(issue.summary)}</span></button><div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px">${visible ? `<button class="gantt-bar" data-bar="${escape(issue.id)}" data-day-width="${dayWidth}" data-full-start="${rawStart}" data-full-end="${rawEnd}" style="left:${left}px;width:${right - left}px;--bar-bg:${colors[0]};--bar-color:${colors[1]};--bar-border:${colors[2]};--bar-fill:${colors[2]}" title="${escape(`${issue.id}: ${issue.startDate} → ${issue.dueDate} · ${issue.progress}% · ${C.statuses[index]}`)}" aria-label="Edit schedule for ${escape(issue.id)}"><span class="bar-progress" style="width:${Math.max(0, Math.min(100, issue.progress))}%"></span><span class="bar-text">${escape(issue.summary)}</span>${rawEnd <= days ? '<span class="resize-handle" title="Drag to change due date"></span>' : ''}</button>` : `<button class="schedule-note" data-open="${escape(issue.id)}">${scheduled ? `Outside this window · ${shortDate(issue.startDate)} – ${shortDate(issue.dueDate)}` : 'Set start and due dates →'}</button>`}</div></div>`;
     }).join('');
     let links = '';
     issues.forEach(issue => C.split(issue.dependencies).forEach(id => {
       const from = positions.get(id), to = positions.get(issue.id); if (!from || !to) return;
       const turn = from.right + 12;
-      links += `<path d="M${from.right},${from.y} H${turn} V${to.y} H${to.left}" fill="none" stroke="#aab99d" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrow)"/>`;
+      links += `<path d="M${from.right},${from.y} H${turn} V${to.y} H${to.left}" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrow)"/>`;
     }));
     const todayOffset = C.dateNumber(today()) - C.dateNumber(start);
     $('#view-content').innerHTML = `<div class="gantt-tools"><div class="left"><button class="button secondary" data-timeline="-1" aria-label="Earlier dates">←</button><button class="button secondary" data-timeline="today">Today</button><button class="button secondary" data-timeline="1" aria-label="Later dates">→</button><input id="timeline-date" type="date" aria-label="Timeline start" value="${start}" min="1900-01-01" max="2200-01-01"></div><div class="right"><span>${shortDate(start)} – ${shortDate(end)} ${end.slice(0, 4)}</span><select id="timeline-zoom" aria-label="Timeline zoom">${options(['weeks', 'days'], state.zoom)}</select></div></div><div class="gantt-viewport"><div class="gantt-grid"><div class="gantt-header"><div class="gantt-label-head">ISSUE / TIMELINE</div><div class="gantt-dates">${Array.from({ length: days }, (_, n) => { const value = C.addDays(start, n), d = new Date(value + 'T12:00:00Z'); return `<div class="gantt-date ${[0, 6].includes(d.getUTCDay()) ? 'weekend' : ''} ${value === today() ? 'today' : ''}" style="width:${dayWidth}px" title="${value}">${d.getUTCDate() === 1 || n === 0 ? d.toLocaleDateString('en', { month: 'short', timeZone: 'UTC' }) : d.toLocaleDateString('en', { weekday: 'narrow', timeZone: 'UTC' })}<strong>${d.getUTCDate()}</strong></div>`; }).join('')}</div></div>${rows}<svg class="timeline-links" width="${width}" height="${issues.length * 45}" aria-hidden="true"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10" fill="none" stroke="#aab99d"/></marker></defs>${links}</svg>${todayOffset >= 0 && todayOffset < days ? `<div class="today-line" style="left:calc(var(--label-width,260px) + ${todayOffset * dayWidth + dayWidth / 2}px)"></div>` : ''}</div></div><div class="gantt-legend">${C.types.map(t => `<span><i style="background:${typeColors[t]}"></i>${t}</span>`).join('')}<span>┄ Dependency</span><span>Shaded bar = progress</span></div>`;
@@ -411,7 +411,7 @@
     const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-timeline], [data-bar], [data-toggle-lane]');
     if (!target) return;
     if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
-    else if (target.hasAttribute('data-quick-add')) { const input = target.parentElement.querySelector('[data-quick-title]'); input.dataset.quickKind = target.parentElement.querySelector('[data-quick-kind]').value; createQuickTask(target.dataset.quickAdd, input); }
+    else if (target.hasAttribute('data-quick-add')) { const input = target.parentElement.querySelector('[data-quick-title]'); input.dataset.quickKind = target.parentElement.querySelector('[data-quick-kind]').value; input.dataset.quickParentId = target.closest('.swimlane')?.dataset.epicLane || ''; createQuickTask(target.dataset.quickAdd, input); }
     else if (target.hasAttribute('data-new')) openIssue('', { status: target.dataset.new, parentId: state.epic });
     else if (target.hasAttribute('data-clear')) clearFilters();
     else if (target.hasAttribute('data-sort')) { state.ascending = state.sort === target.dataset.sort ? !state.ascending : true; state.sort = target.dataset.sort; render(); }
@@ -424,7 +424,7 @@
     const target = event.target.closest('[data-issue], [data-open]'); if (!target) return;
     const id = target.dataset.issue || target.dataset.open, preview = commentPreview(id); if (preview) target.title = preview.split('\n').slice(-3).join('\n');
   });
-  $('#view-content').addEventListener('keydown', event => { if (event.target.matches('.column-quick-add input') && event.key === 'Enter') { event.preventDefault(); event.target.dataset.quickKind = event.target.parentElement.querySelector('[data-quick-kind]').value; createQuickTask(event.target.dataset.quickTitle, event.target); } else if (event.target.matches('.card') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); openIssue(event.target.dataset.issue); } });
+  $('#view-content').addEventListener('keydown', event => { if (event.target.matches('.column-quick-add input') && event.key === 'Enter') { event.preventDefault(); event.target.dataset.quickKind = event.target.parentElement.querySelector('[data-quick-kind]').value; event.target.dataset.quickParentId = event.target.closest('.swimlane')?.dataset.epicLane || ''; createQuickTask(event.target.dataset.quickTitle, event.target); } else if (event.target.matches('.card') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); openIssue(event.target.dataset.issue); } });
   $('#view-content').addEventListener('change', async event => {
     const target = event.target;
     if (target.id === 'all-columns') { state.allColumns = target.checked; render(); return; }
