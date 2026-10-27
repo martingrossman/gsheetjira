@@ -83,6 +83,18 @@ Only the title is required when creating a task. Other fields receive configured
 - Provide undo for supported edits, moves, and scheduling changes.
 - Avoid unnecessary confirmation dialogs for routine edits.
 
+### 4.1 Vertical Reordering Across Views
+
+- Allow tasks and epics to be reordered vertically by drag and drop in every board and ordered list, including the task list, Kanban, and Gantt views.
+- Allow epic groups and swimlanes to be moved up or down, keeping their child tasks together.
+- Allow tasks to be moved up or down within their current column or hierarchy group.
+- Save manual sort order in Google Sheets and preserve it after refresh or reopening the application.
+- Apply the saved order consistently across views for items within the same ordering group.
+- Moving an item vertically within its group changes only its order; it preserves status, parent relationships, dependencies, and scheduled dates.
+- Provide keyboard-accessible Move up and Move down actions.
+- Show the insertion position while dragging and allow undo of a reorder.
+- Make manual ordering available when another sort is active, and preserve the relative order of items hidden by filters.
+
 ## 5. Task List
 
 - Provide a compact, editable table.
@@ -357,6 +369,7 @@ Backlog → Ready → In Progress → Review → Done
   - Quick task creation
   - Inline and bulk editing
   - Kanban moves
+  - Vertical task and epic reordering across views, including persistence and filtered lists
   - Epic swimlane moves
   - Task-type filtering
   - Badge configuration
@@ -376,6 +389,7 @@ Backlog → Ready → In Progress → Review → Done
 - Fast task creation and inline editing.
 - Task list and task detail panel.
 - Kanban board.
+- Vertical task and epic reordering across boards and lists.
 - Optional epic swimlanes.
 - Configurable task types and colors.
 - Task-type filters.
