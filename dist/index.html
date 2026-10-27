@@ -47,7 +47,7 @@
       <div class="page-heading"><div><div class="eyebrow">A LITTLE STRUCTURE. A LOT OF POSSIBILITY.</div><h1>Good work starts here<span>.</span></h1><p>From the big picture to the next small step. Keep it all in flow.</p></div><button id="create-issue" class="button primary"><span data-icon="plus"></span>Create issue</button></div>
       <div class="stats" id="stats" aria-label="Project statistics"></div>
       <div class="quick-entry" aria-label="Quick create task"><input id="quick-title" type="text" maxlength="250" placeholder="What needs doing? Press Enter to add a task" aria-label="New task title"><button id="quick-add" class="button primary" type="button">Add task</button></div>
-      <div class="view-bar"><div class="tabs" role="tablist" aria-label="Project view"><button data-view="sheet" role="tab"><span data-icon="sheet"></span>Sheet</button><button data-view="kanban" role="tab"><span data-icon="board"></span>Kanban</button><button data-view="gantt" role="tab"><span data-icon="timeline"></span>Gantt</button></div><div class="view-actions"><button id="refresh" class="button subtle"><span data-icon="refresh"></span><span>Refresh</span></button><button id="export" class="button subtle"><span data-icon="download"></span><span>Export CSV</span></button></div></div>
+<div class="view-bar"><div class="tabs" role="tablist" aria-label="Project view"><button data-view="sheet" role="tab"><span data-icon="sheet"></span>Sheet</button><button data-view="kanban" role="tab"><span data-icon="board"></span>Kanban</button><button data-view="gantt" role="tab"><span data-icon="timeline"></span>Gantt</button></div><div class="view-actions"><label class="button subtle view-toggle" title="Group the Kanban board into epic lanes"><input id="swimlanes-toggle" type="checkbox" checked> Swimlanes</label><button id="refresh" class="button subtle"><span data-icon="refresh"></span><span>Refresh</span></button><button id="export" class="button subtle"><span data-icon="download"></span><span>Export CSV</span></button></div></div>
       <div class="toolbar"><label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="Search issues…" aria-label="Search issues"><kbd>/</kbd></label><div class="filters"><select id="type-filter" aria-label="Filter by type"><option value="">All types</option></select><select id="assignee-filter" aria-label="Filter by assignee"><option value="">Anyone</option></select><select id="status-filter" aria-label="Filter by status"><option value="">All statuses</option></select><select id="sprint-filter" aria-label="Filter by sprint"><option value="">All sprints</option></select><button id="clear-filters" class="button subtle" hidden>Clear filters</button></div><span id="issue-count" class="issue-count"></span></div>
       <div id="filter-context" class="filter-context" hidden></div>
       <div id="error-banner" class="error-banner" role="alert" hidden></div>
@@ -230,15 +230,19 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   const storageKey = 'sheetflow.project.v1';
   const draftStorageKey = 'sheetflow.pending-drafts.v1';
   const uiStorageKey = 'sheetflow.ui.v1';
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], collapsedEpics: {}, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], collapsedEpics: {}, swimlanes: true, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', draggingId = null, timelineDrag = null, suppressClickUntil = 0, toastTimer;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
-  try { state.collapsedEpics = JSON.parse(localStorage.getItem(uiStorageKey) || '{}').collapsedEpics || {}; } catch (ignore) { state.collapsedEpics = {}; }
+  try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.swimlanes = ui.swimlanes !== false; } catch (ignore) { state.collapsedEpics = {}; }
   function setEpicCollapsed(id, collapsed) {
     if (!id) return;
     if (collapsed) state.collapsedEpics[id] = true; else delete state.collapsedEpics[id];
-    localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics }));
+    localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, swimlanes: state.swimlanes }));
+  }
+  function setSwimlanes(enabled) {
+    state.swimlanes = Boolean(enabled);
+    localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, swimlanes: state.swimlanes }));
   }
   function draftKey(input) { return input?.id || '__new__'; }
   function saveDraft(input, version) {
@@ -408,6 +412,8 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (!state.ready) return;
     renderFilters();
     $$('[data-view]').forEach(el => { const active = el.dataset.view === state.view; el.classList.toggle('active', active); if (el.getAttribute('role') === 'tab') { el.setAttribute('aria-selected', String(active)); el.setAttribute('aria-controls', 'view-content'); } });
+    const swimlanesToggle = $('#swimlanes-toggle');
+    if (swimlanesToggle) { swimlanesToggle.checked = state.swimlanes; swimlanesToggle.closest('.view-toggle').hidden = state.view !== 'kanban'; }
     const issues = filtered(), done = issues.filter(i => i.status === 'Done').length;
     const progress = issues.length ? Math.round(done / issues.length * 100) : 0;
     const overdue = issues.filter(i => i.dueDate && i.dueDate < today() && i.status !== 'Done').length;
@@ -440,15 +446,17 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   function renderBoard(issues) {
     const epics = C.sorted(issues.filter(issue => issue.type === 'Epic'));
     const lanes = epics.map(epic => ({ id: epic.id, label: epic.summary, items: issues.filter(issue => issue.id === epic.id || inEpic(issue) && issue.id !== epic.id && (() => { let current = issue; const seen = new Set(); while (current && !seen.has(current.id)) { if (current.parentId === epic.id) return true; seen.add(current.id); current = issueById(current.parentId); } return false; })()) })).concat([{ id: '', label: 'No epic', items: issues.filter(issue => !epics.some(epic => issue.id === epic.id || inEpicWithin(issue, epic.id))) }]);
+    const renderColumns = items => C.statuses.map((status, index) => {
+      const cards = items.filter(i => i.status === status);
+      return `<section class="column" data-status="${status}" aria-label="${status}" style="--status-color:${statusColors[index]}"><h2 class="column-header"><span class="status-dot"></span>${status}<span class="column-count">${cards.length}</span><button data-new="${status}" aria-label="Open full task editor for ${status}">+</button></h2><div class="card-list">${cards.map(card).join('') || '<div class="column-empty">A little room for what’s next</div>'}</div><div class="column-quick-add"><select data-quick-kind="${status}" aria-label="New work item kind"><option value="Task">Task</option><option value="Story">Story</option><option value="Epic">Epic</option></select><input data-quick-title="${status}" maxlength="250" placeholder="Add a task, story, or epic…" aria-label="Add task, story, or epic to ${status}"><button data-quick-add="${status}" aria-label="Add task, story, or epic to ${status}">＋</button></div></section>`;
+    }).join('');
+    if (!state.swimlanes) { $('#view-content').innerHTML = `<div class="board">${renderColumns(issues)}</div>`; return; }
     $('#view-content').innerHTML = `<div class="swimlanes">${lanes.map(lane => {
       const workItems = lane.items.filter(issue => issue.type !== 'Epic');
       const done = workItems.filter(issue => issue.status === 'Done').length;
       const progress = workItems.length ? Math.round(done / workItems.length * 100) : 0;
       const collapsed = Boolean(lane.id && state.collapsedEpics[lane.id]);
-      const board = C.statuses.map((status, index) => {
-        const cards = lane.items.filter(i => i.status === status);
-        return `<section class="column" data-status="${status}" aria-label="${status} in ${lane.label}" style="--status-color:${statusColors[index]}"><h2 class="column-header"><span class="status-dot"></span>${status}<span class="column-count">${cards.length}</span><button data-new="${status}" aria-label="Open full task editor for ${status}">+</button></h2><div class="card-list">${cards.map(card).join('') || '<div class="column-empty">A little room for what’s next</div>'}</div><div class="column-quick-add"><select data-quick-kind="${status}" aria-label="New work item kind"><option value="Task">Task</option><option value="Story">Story</option><option value="Epic">Epic</option></select><input data-quick-title="${status}" maxlength="250" placeholder="Add a task, story, or epic…" aria-label="Add task, story, or epic to ${status}"><button data-quick-add="${status}" aria-label="Add task, story, or epic to ${status}">＋</button></div></section>`;
-      }).join('');
+      const board = renderColumns(lane.items);
       return `<section class="swimlane${collapsed ? ' collapsed' : ''}" data-epic-lane="${escape(lane.id)}"><header class="swimlane-header"><span class="epic-dot"></span><strong>${escape(lane.label)}</strong><span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span>${lane.id ? `<button type="button" class="swimlane-toggle" data-toggle-lane="${escape(lane.id)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}">${collapsed ? '+' : '−'}</button>` : ''}</header>${collapsed ? '' : `<div class="board">${board}</div>`}</section>`;
     }).join('')}</div>`;
   }
@@ -549,6 +557,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $('#search').addEventListener('input', event => { state.query = event.target.value; render(); });
   for (const key of ['type', 'assignee', 'status', 'sprint']) $(`#${key}-filter`).addEventListener('change', event => { state[key] = event.target.value; render(); });
   $('#clear-filters').addEventListener('click', clearFilters);
+  $('#swimlanes-toggle').addEventListener('change', event => { setSwimlanes(event.target.checked); render(); });
   $('#epic-nav').addEventListener('click', event => { const target = event.target.closest('[data-epic]'); if (target) { state.epic = state.epic === target.dataset.epic ? '' : target.dataset.epic; render(); } });
   $('#export').addEventListener('click', () => {
     if (!state.ready) return;
@@ -637,12 +646,12 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const target = event.target.closest('.card'); clearDragStyle();
     if (!issue || target?.dataset.issue === id) return;
     const lane = column.closest('.swimlane'), laneId = lane?.dataset.epicLane || '';
-    const neighbors = C.sorted(state.issues.filter(i => i.status === column.dataset.status && i.id !== id && (laneId ? inEpicWithin(i, laneId) : !state.issues.some(epic => epic.type === 'Epic' && inEpicWithin(i, epic.id)))));
+    const neighbors = C.sorted(state.issues.filter(i => i.status === column.dataset.status && i.id !== id && (!state.swimlanes || (laneId ? inEpicWithin(i, laneId) : !state.issues.some(epic => epic.type === 'Epic' && inEpicWithin(i, epic.id))))));
     const targetIndex = target ? neighbors.findIndex(i => i.id === target.dataset.issue) : -1;
     let rank;
     if (targetIndex >= 0) rank = (neighbors[targetIndex].rank + (targetIndex ? neighbors[targetIndex - 1].rank : 0)) / 2;
     else rank = (neighbors.at(-1)?.rank || 0) + 1000;
-    const parentId = issue.type === 'Epic' ? issue.parentId : laneId || '';
+    const parentId = issue.type === 'Epic' ? issue.parentId : (laneId || (!state.swimlanes ? issue.parentId : ''));
     try { await persist({ ...issue, status: column.dataset.status, parentId, rank }, issue.version, 'Board updated'); }
     catch (error) { notify(error.message, true); }
   });

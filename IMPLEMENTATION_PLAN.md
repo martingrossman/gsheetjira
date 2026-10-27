@@ -263,8 +263,11 @@ Inline Kanban quick creation is a required part of this package: each status col
 
 The default Kanban presentation is epic swimlanes: lanes run horizontally across the status columns, include all descendants of the epic, and include a final `No epic` lane for standalone work. The same epic grouping semantics must be reusable by Gantt and dashboard views.
 
+The Kanban swimlane presentation is optional: a persisted toolbar toggle can turn swimlanes on or off. When off, the board uses one flat set of status columns while retaining each task's epic relationship so turning swimlanes back on restores the grouping.
+
 **Dependencies:** WP-03–WP-06. **Requirements:** 6, 6.1, 6.2.
 
+- [x] Add a persisted Kanban Swimlanes on/off toggle. Off renders a flat board and preserves task epic relationships; on restores epic grouping and collapsed-lane state.
 - [ ] Add No grouping / Epic / Assignee / Project selectors; Epic grouping currently has aligned status columns, collapsible groups and an explicit No epic lane.
 - [ ] Support vertical group order and shared task ordering. Inline quick-add remains available, but lane/column defaults are not yet fully persisted.
 - [ ] Replace the current client-side status/parent/rank save with one server-side move command and validate parent/descendant membership before moving across epics.
