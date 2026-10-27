@@ -81,6 +81,18 @@ The repository now includes a non-destructive schema migration foundation. After
 
 ## What you can do
 
+### Separate development, test, and production targets
+
+The Apps Script project supports three explicit environment names: `development`, `test`, and `production`. Configure the target spreadsheet from the Apps Script editor before running setup:
+
+```js
+configureTrackerEnvironment('test', 'TEST_SPREADSHEET_ID')
+```
+
+Use `configureTrackerEnvironment('production', 'PRODUCTION_SPREADSHEET_ID')` only in the production project. The spreadsheet ID is stored in an environment-specific script property, and server reads/writes use the selected environment. Existing projects continue to use the legacy `SPREADSHEET_ID` property as a fallback.
+
+After setup, run **SheetFlow → Run startup health check**. It verifies the selected spreadsheet, schema tabs, and installed edit trigger. Keep the deployment owner-only until shared identity and role checks have been verified.
+
 - **Sheet:** edit cells directly, sort columns, and toggle all 21 fields. Click an issue ID to open the full editor. Native Google Sheets remains an editable source of truth.
 - **Kanban:** move cards through Backlog, To Do, In Progress, Review, and Done. Drop on a card to insert before it; drop on a column header or empty area to append. Status is also editable in the issue drawer, including on touch devices.
 - **Gantt:** drag a bar to shift start and due dates together; resize its right edge to change the due date. Use Today, previous/next windows, a start-date picker, or day/week zoom. Bars display progress, with dashed lines for dependencies. Unscheduled issues stay visible with a link to set dates; issues outside the window show their date range.

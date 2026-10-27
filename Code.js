@@ -4,6 +4,7 @@ function onOpen() {
     .addItem('Set up / repair tracker', 'setupTracker')
     .addItem('Open tracker', 'openTracker')
     .addItem('Check schema health', 'schemaHealthCheck')
+    .addItem('Run startup health check', 'startupHealthCheck')
     .addItem('Preview v2 migration', 'migrationDryRun')
     .addItem('Migrate legacy Issues to v2 tabs', 'migrateLegacyIssues')
     .addItem('Add sample project to empty tracker', 'loadSampleData').addToUi();
@@ -12,13 +13,14 @@ function onOpen() {
 function setupTracker() {
   return withLock_(function () {
     var properties = PropertiesService.getScriptProperties();
-    var id = properties.getProperty('SPREADSHEET_ID');
+    var id = SheetFlowEnvironment.spreadsheetId();
     var book = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
     if (!book) book = SpreadsheetApp.create('SheetFlow — Project tracker');
     var sheet = book.getSheetByName('Issues');
     if (!sheet) sheet = book.insertSheet('Issues');
     if (sheet.getLastRow() > 0) assertHeaders_(sheet);
     properties.setProperty('SPREADSHEET_ID', book.getId());
+    properties.setProperty('SHEETFLOW_SPREADSHEET_ID_' + SheetFlowEnvironment.config().name.toUpperCase(), book.getId());
     formatSheet_(sheet);
     var hasEditTrigger = ScriptApp.getProjectTriggers().some(function (trigger) {
       return trigger.getHandlerFunction() === 'handleSheetEdit' && trigger.getTriggerSourceId() === book.getId();
@@ -129,7 +131,7 @@ function handleSheetEdit(e) {
   });
 }
 function getBook_() {
-  var id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  var id = SheetFlowEnvironment.spreadsheetId();
   if (!id) throw new Error('Run setupTracker in the Apps Script editor first.');
   var book = SpreadsheetApp.openById(id);
   var sheet = book.getSheetByName('Issues');

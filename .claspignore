@@ -7,4 +7,6 @@
 !Client.html
 !Schema.js
 !Migrations.js
+!Environment.js
+!Repository.js
 !appsscript.json

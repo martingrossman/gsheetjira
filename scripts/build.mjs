@@ -9,6 +9,8 @@ new vm.Script(core, { filename: 'Core.js' });
 new vm.Script(await read('Code.js'), { filename: 'Code.js' });
 new vm.Script(await read('Schema.js'), { filename: 'Schema.js' });
 new vm.Script(await read('Migrations.js'), { filename: 'Migrations.js' });
+new vm.Script(await read('Environment.js'), { filename: 'Environment.js' });
+new vm.Script(await read('Repository.js'), { filename: 'Repository.js' });
 const browserCore = `<script>\n${core}\n</script>\n`;
 await writeFile(path.join(root, 'CoreScript.html'), browserCore);
 let html = await read('Index.html');
