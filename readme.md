@@ -124,7 +124,7 @@ Dependencies are informational: the app prevents cyclic links but does not autom
 npm run check
 ```
 
-This builds the standalone HTML, regenerates the browser model, syntax-checks browser/server JavaScript, and runs 24 Node tests. Tests cover hierarchy, dependency cycles, dates, completion/reopening, CSV escaping, sheet serialization, stale edits, row sorting, ID allocation, direct multirow pastes, and safe deletion. Server tests use an in-memory Apps Script service mock.
+This builds the standalone HTML, regenerates the browser model, syntax-checks browser/server JavaScript, and runs 28 Node tests. Tests cover hierarchy, dependency cycles, dates, completion/reopening, CSV escaping, sheet serialization, stale edits, row sorting, ID allocation, direct multirow pastes, safe deletion, and setup with non-chainable frozen-pane setters. Re-running setup is tested to preserve issues and reuse the existing spreadsheet and edit trigger. Server tests use an in-memory Apps Script service mock.
 
 The local browser workflow was also exercised for creation, Kanban dragging, inline sheet edits, Gantt dragging/resizing, persistence across reloads, filters, validation, CSV download, and mobile layouts. Live Google authorization, native Sheet formatting, and the deployed Apps Script runtime still need a smoke test after deployment.
 
@@ -143,4 +143,4 @@ tests/             Model and mocked server tests
 dist/index.html    Self-contained standalone browser demo
 ```
 
-This is a Jira-style tracker; it does not connect to Atlassian Jira. No source has been pushed to Google and no live deployment has been created by this local build.
+This is a Jira-style tracker; it does not connect to Atlassian Jira. The checked-in manifest preserves the current personal web-app settings (execute as the deploying user, accessible only to that user). Publishing to GitHub or building locally does not update Apps Script; use the deployment steps above to release future changes.

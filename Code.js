@@ -191,7 +191,10 @@ function formatSheet_(sheet) {
   if (sheet.getMaxRows() < 1000) sheet.insertRowsAfter(sheet.getMaxRows(), 1000 - sheet.getMaxRows());
   var rows = sheet.getMaxRows() - 1;
   sheet.getRange(1, 1, 1, fields.length).setValues([fields.map(function (f) { return f.label; })]).setBackground('#173e36').setFontColor('#ffffff').setFontWeight('bold').setWrap(true);
-  sheet.setFrozenRows(1).setFrozenColumns(1).setRowHeight(1, 40);
+  // Frozen-pane setters return void in Apps Script and cannot be chained.
+  sheet.setFrozenRows(1);
+  sheet.setFrozenColumns(1);
+  sheet.setRowHeight(1, 40);
   sheet.getRange(2, 1, rows, fields.length).setFontFamily('Arial').setFontSize(10).setVerticalAlignment('middle');
   fields.forEach(function (f, index) {
     var range = sheet.getRange(2, index + 1, rows, 1);
