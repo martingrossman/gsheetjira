@@ -4,6 +4,22 @@ const C = require('../Core.js');
 const day = '2026-10-27', now = day + 'T10:00:00.000Z';
 const make = (values = {}) => ({ ...C.blank(), id: 'PRJ-1', summary: 'Example issue', createdAt: now, updatedAt: now, ...values });
 
+test('task type presentation supports legacy names, JSON configuration, and safe fallbacks', () => {
+  const settings = [
+    { category: 'taskType', key: 'algo', value: 'Algorithm', valueType: 'json', active: true },
+    { category: 'taskType', key: 'Legacy Name', value: 'legacy', valueType: 'text', active: true },
+    { category: 'taskType', key: 'custom', value: '{"name":"Analytics","color":"#123ABC","badge":"x"}', valueType: 'json', active: true },
+    { category: 'taskType', key: 'broken', value: '{"name":"Broken","color":"red","badge":"!!"}', valueType: 'json', active: true }
+  ];
+  assert.deepEqual(C.taskTypePresentation('algo', settings), { id: 'algo', name: 'Algorithm', color: '#2563EB', badge: 'A' });
+  assert.deepEqual(C.taskTypePresentation('legacy', settings), { id: 'legacy', name: 'Legacy Name', color: C.taskTypePresentation('legacy', []).color, badge: 'L' });
+  assert.deepEqual(C.taskTypePresentation('custom', settings), { id: 'custom', name: 'Analytics', color: '#123ABC', badge: 'X' });
+  const fallback = C.taskTypePresentation('broken', settings);
+  assert.equal(fallback.name, 'Broken'); assert.match(fallback.color, /^#[0-9A-F]{6}$/i); assert.equal(fallback.badge, 'B');
+  assert.equal(C.taskTypePresentation('data', []).color, '#0F766E');
+  assert.deepEqual(C.taskTypeDefinitions([]).map(type => type.id), ['algo', 'data', 'requirements', 'bug']);
+});
+
 test('sample project has unique IDs and valid hierarchy, dates, and dependencies', () => {
   const issues = C.sample(day); assert.equal(new Set(issues.map(i => i.id)).size, issues.length);
   issues.forEach(i => C.validate(i, issues));

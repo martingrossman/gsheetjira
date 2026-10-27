@@ -39,19 +39,21 @@
   const draftStorageKey = 'sheetflow.pending-drafts.v1';
   const uiStorageKey = 'sheetflow.ui.v1';
   const noEpicLaneKey = '__no_epic__';
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], collapsedEpics: {}, swimlanes: true, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
-  let edited = null, initialForm = '', draggingId = null, timelineDrag = null, suppressClickUntil = 0, toastTimer, epicDateFormValues = null;
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], collapsedEpics: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  let edited = null, initialForm = '', draggingId = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
-  try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.swimlanes = ui.swimlanes !== false; } catch (ignore) { state.collapsedEpics = {}; }
+  try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.swimlanes = ui.swimlanes !== false; state.ganttLabelWidth = clampGanttLabelWidth(ui.ganttLabelWidth || 260); } catch (ignore) { state.collapsedEpics = {}; }
+  function clampGanttLabelWidth(value) { const max = Math.min(480, Math.max(1, window.innerWidth * 0.6)), min = Math.min(180, max); return Math.round(Math.max(min, Math.min(max, Number(value) || 260))); }
+  function saveUiState() { localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, swimlanes: state.swimlanes, ganttLabelWidth: state.ganttLabelWidth })); }
   function setEpicCollapsed(id, collapsed) {
     if (!id) return;
     if (collapsed) state.collapsedEpics[id] = true; else delete state.collapsedEpics[id];
-    localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, swimlanes: state.swimlanes }));
+    saveUiState();
   }
   function setSwimlanes(enabled) {
     state.swimlanes = Boolean(enabled);
-    localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, swimlanes: state.swimlanes }));
+    saveUiState();
   }
   function draftKey(input) { return input?.id || '__new__'; }
   function saveDraft(input, version) {
@@ -67,9 +69,10 @@
     const draft = issue && state.drafts[issue.id]; return draft ? { ...issue, ...draft.input } : issue;
   }
   function activityTypes() {
-    const configured = state.settings.filter(setting => setting.category === 'taskType' && setting.active !== false).sort((a, b) => a.order - b.order);
-    return configured.length ? configured.map(setting => ({ value: setting.valueType === 'json' ? setting.key : setting.value, label: setting.valueType === 'json' ? setting.value : setting.key })) : [{ value: 'algo', label: 'Algo' }, { value: 'data', label: 'Data' }, { value: 'requirements', label: 'Requirements' }, { value: 'bug', label: 'Bug' }];
+    return C.taskTypeDefinitions(state.settings).map(type => ({ value: type.id, label: type.name }));
   }
+  function taskTypeBadge(id) { const type = C.taskTypePresentation(id, state.settings); return `<span class="task-type-badge" style="--task-type-color:${type.color}" title="${escape(type.name)}" aria-label="${escape(type.name)}">${escape(type.badge)}</span>`; }
+  function defaultTaskTypeId() { const configured = state.settings.find(setting => setting.category === 'workflow' && setting.key === 'defaultTaskType' && setting.active !== false)?.value; return activityTypes().some(type => type.value === String(configured || '').toLowerCase()) ? String(configured).toLowerCase() : 'algo'; }
   function getLocal() {
     const raw = localStorage.getItem(storageKey);
     if (raw === null) {
@@ -179,7 +182,7 @@
     if (!title || !state.ready) return;
     input.value = '';
     if (state.busy) { state.quickQueue.push({ title, status, kind, parentId }); syncText('Work item queued…'); return; }
-    try { await persist({ summary: title, type: kind, taskTypeId: 'algo', status, priority: 'Medium', parentId }, undefined, `${kind} added`); }
+    try { await persist({ summary: title, type: kind, taskTypeId: defaultTaskTypeId(), status, priority: 'Medium', parentId }, undefined, `${kind} added`); }
     catch (ignore) {}
     finally { if (!state.busy && state.quickQueue.length) { const next = state.quickQueue.shift(); input.value = next.title; input.dataset.quickKind = next.kind; input.dataset.quickParentId = next.parentId || ''; createQuickTask(next.status, input); } }
   }
@@ -251,7 +254,7 @@
     ].map(s => `<div class="stat"><div class="stat-label">${icon(s[0])}${s[1]}</div><div class="stat-bottom"><span class="stat-number">${s[2]}</span><span class="stat-note ${s[4]}">${s[3]}</span></div></div>`).join('');
     $('#epic-nav').innerHTML = state.issues.filter(i => i.type === 'Epic').map(i => `<button data-epic="${escape(i.id)}" class="${state.epic === i.id ? 'active' : ''}" title="${escape(i.summary)}"><span class="epic-dot"></span><span class="epic-name">${escape(i.summary)}</span></button>`).join('') || '<span class="nav-caption">No epics yet</span>';
     $('#issue-count').textContent = `${issues.length} of ${state.issues.length} issues`;
-    $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Edit a cell to save. Click an issue ID for the full story.', gantt: 'Drag tasks to reschedule. Epic spans follow scheduled child issues.' }[state.view];
+    $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Edit a cell to save. Click an issue ID for the full story.', gantt: 'Double-click labels or bars to edit. Drag bars to reschedule; Epic spans follow child schedules.' }[state.view];
     if (!state.issues.length) { $('#view-content').innerHTML = `<div class="empty-state">${icon('stack')}<h2>A fresh start for your next project.</h2><p>Create your first epic, story, task, or bug.</p><button class="button primary" data-new="Backlog">Create your first issue</button></div>`; return; }
     if (!issues.length) { $('#view-content').innerHTML = '<div class="empty-state"><h2>No issues match these filters.</h2><p>Try a different search, or clear the filters to see everything.</p><button class="button secondary" data-clear>Clear filters</button></div>'; return; }
     const content = $('#view-content'), oldScroll = content.querySelector('.board, .table-wrap, .gantt-viewport');
@@ -267,8 +270,7 @@
     const priorityClass = C.priorities.includes(issue.priority) ? issue.priority.toLowerCase() : '';
     const parent = issueById(issue.parentId);
     const dates = effectiveDates(issue);
-    const activity = { algo: 'Algo', data: 'Data', requirements: 'Requirements', bug: 'Bug' }[issue.taskTypeId] || issue.taskTypeId || 'General';
-    return `<article class="card" draggable="true" tabindex="0" role="button" data-issue="${escape(issue.id)}" aria-label="${escape(issue.id + ': ' + issue.summary)}"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels"><span class="label-tag activity-tag">${escape(activity)}</span>${C.split(issue.labels).slice(0, 2).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${dates.dueDate && dates.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${dates.dueDate ? escape(shortDate(dates.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}</div></article>`;
+    return `<article class="card" draggable="true" tabindex="0" role="button" data-issue="${escape(issue.id)}" aria-label="${escape(issue.id + ': ' + issue.summary)}"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels">${taskTypeBadge(issue.taskTypeId)}${C.split(issue.labels).slice(0, 2).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${dates.dueDate && dates.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${dates.dueDate ? escape(shortDate(dates.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}</div></article>`;
   }
   function renderBoard(issues) {
     const renderColumns = items => C.statuses.map((status, index) => {
@@ -312,7 +314,7 @@
     const dates = epic ? effectiveDates(epic) : null;
     const collapsed = laneCollapsed(lane), key = laneCollapsedKey(lane);
     const range = dates?.startDate && dates?.dueDate ? `<span class="swimlane-dates">${shortDate(dates.startDate)} – ${shortDate(dates.dueDate)}</span>` : '';
-    return `<div class="swimlane-header ${extraClass}"><button type="button" class="swimlane-collapse" data-toggle-lane="${escape(key)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}"><span class="epic-dot"></span>${epic ? `<span class="swimlane-epic-id">${typeIcon('Epic')}${escape(epic.id)}</span>` : ''}<strong>${escape(lane.label)}</strong>${epic ? `<span class="status-badge" style="--status-bg:${statusBg[statusIndex] || '#F1F5F9'};--status-color:${statusColors[statusIndex] || '#64748B'}">${escape(epic.status)}</span>` : ''}${range}<span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span><span class="swimlane-toggle" aria-hidden="true">${collapsed ? '+' : '−'}</span></button>${epic ? `<button type="button" class="swimlane-edit" data-open="${escape(epic.id)}" aria-label="Edit epic ${escape(epic.id)}" title="Edit epic">Edit</button>` : ''}</div>`;
+    return `<div class="swimlane-header ${extraClass}"><button type="button" class="swimlane-collapse" data-toggle-lane="${escape(key)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}"><span class="epic-dot"></span>${epic ? `<span class="swimlane-epic-id">${typeIcon('Epic')}${escape(epic.id)}</span>${taskTypeBadge(epic.taskTypeId)}` : ''}<strong>${escape(lane.label)}</strong>${epic ? `<span class="status-badge" style="--status-bg:${statusBg[statusIndex] || '#F1F5F9'};--status-color:${statusColors[statusIndex] || '#64748B'}">${escape(epic.status)}</span>` : ''}${range}<span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span><span class="swimlane-toggle" aria-hidden="true">${collapsed ? '+' : '−'}</span></button>${epic ? `<button type="button" class="swimlane-edit" data-open="${escape(epic.id)}" aria-label="Edit epic ${escape(epic.id)}" title="Edit epic">Edit</button>` : ''}</div>`;
   }
   function renderSheet(issues) {
     const primary = ['id', 'type', 'parentId', 'summary', 'status', 'priority', 'assignee', 'startDate', 'dueDate', 'progress', 'estimate', 'sprint'];
@@ -334,7 +336,7 @@
   }
   function cell(issue, field) {
     const key = field.key, value = issue[key];
-    if (key === 'taskTypeId') { const labels = { algo: 'Algo', data: 'Data', requirements: 'Requirements', bug: 'Bug' }; return `<span class="label-tag">${escape(labels[value] || value || 'General')}</span>`; }
+    if (key === 'taskTypeId') return taskTypeBadge(value);
     if (key === 'id') return `<button class="issue-link" data-open="${escape(issue.id)}">${typeIcon(issue.type)}${escape(value)}</button>`;
     if (issue.type === 'Epic' && ['startDate', 'dueDate'].includes(key)) { const dates = effectiveDates(issue); return `<span class="cell-readonly" title="Derived from scheduled child issues; edit child dates to change the Epic schedule.">${escape(dates[key] || '—')}</span>`; }
     if (['createdAt', 'updatedAt', 'completedDate', 'rank'].includes(key)) return `<span class="cell-readonly" title="${escape(value)}">${escape(field.kind === 'timestamp' ? timestamp(value) : value || '—')}</span>`;
@@ -346,7 +348,62 @@
   function parentsFor(issue) {
     return state.issues.filter(i => i.id !== issue.id && (issue.type === 'Story' ? i.type === 'Epic' : ['Task', 'Bug'].includes(issue.type) ? ['Epic', 'Story'].includes(i.type) : false)).map(i => ({ value: i.id, label: `${i.id} · ${i.summary}` }));
   }
+  function ganttHierarchyRows(items, laneParentId = '') {
+    const byId = new Map(items.map(issue => [issue.id, issue])), children = new Map(), roots = [];
+    items.forEach(issue => {
+      const parent = byId.has(issue.parentId) ? issue.parentId : '';
+      if (!parent) roots.push(issue);
+      else { if (!children.has(parent)) children.set(parent, []); children.get(parent).push(issue); }
+    });
+    const rows = [], seen = new Set();
+    function actualDepth(issue) {
+      let current = issue, depth = 0; const visited = new Set();
+      while (current && current.parentId && !visited.has(current.id)) {
+        visited.add(current.id); const parent = issueById(current.parentId); depth++;
+        if (!parent || parent.id === laneParentId) break;
+        current = parent;
+      }
+      return depth;
+    }
+    function add(issue) {
+      if (seen.has(issue.id)) return; seen.add(issue.id); rows.push({ issue, depth: actualDepth(issue) });
+      C.sorted(children.get(issue.id) || []).forEach(add);
+    }
+    C.sorted(roots).forEach(add);
+    C.sorted(items.filter(issue => !seen.has(issue.id))).forEach(add);
+    return rows;
+  }
+  function ganttAddButton(issue) {
+    if (!['Epic', 'Story'].includes(issue.type)) return '';
+    return `<span class="gantt-quick-anchor"><button type="button" class="gantt-add-button" data-gantt-add="${escape(issue.id)}" data-gantt-add-kind="${issue.type === 'Epic' ? 'epic' : 'story'}" aria-label="Add work under ${escape(issue.id)}" title="Add work under ${escape(issue.id)}">＋</button></span>`;
+  }
+  async function createGanttQuickItem(formElement) {
+    const title = formElement.elements.summary.value.trim(), parentId = formElement.dataset.parentId, kind = formElement.elements.kind?.value || 'Task';
+    if (!title || !parentId || state.busy) return;
+    try { await persist({ summary: title, type: kind, taskTypeId: defaultTaskTypeId(), status: 'Backlog', priority: 'Medium', parentId }, undefined, `${kind} added`); }
+    catch (error) { notify(error.message, true); }
+  }
+  function showGanttCommentPreview(target) {
+    const id = target.dataset.previewId || target.dataset.open || target.dataset.bar, comments = (state.comments[id] || []).slice(-3).reverse();
+    hideGanttCommentPreview(); if (!comments.length) return;
+    const card = document.createElement('div'); card.id = 'gantt-comment-preview'; card.className = 'gantt-comment-preview'; card.setAttribute('role', 'tooltip');
+    card.innerHTML = `<h4>Recent comments</h4>${comments.map(comment => `<div class="gantt-comment-item"><div class="gantt-comment-meta">${escape(comment.author || comment.authorId || 'Unknown')} · ${escape(timestamp(comment.createdAt))}</div><div class="gantt-comment-body">${escape(comment.body || '')}</div></div>`).join('')}`;
+    document.body.appendChild(card);
+    target.setAttribute('aria-describedby', card.id); ganttPreviewTarget = target;
+    const rect = target.getBoundingClientRect(), box = card.getBoundingClientRect();
+    card.style.left = `${Math.max(12, Math.min(window.innerWidth - box.width - 12, rect.left))}px`;
+    card.style.top = `${Math.max(12, Math.min(window.innerHeight - box.height - 12, rect.bottom + 6))}px`;
+    card.addEventListener('pointerleave', hideGanttCommentPreview);
+  }
+  function hideGanttCommentPreview() { document.querySelector('.gantt-comment-preview')?.remove(); ganttPreviewTarget?.removeAttribute('aria-describedby'); ganttPreviewTarget = null; }
+  function applyGanttLabelWidth(width) {
+    state.ganttLabelWidth = clampGanttLabelWidth(width);
+    const grid = $('#view-content .gantt-grid'), resizer = $('#view-content .gantt-resizer');
+    if (grid) grid.style.setProperty('--label-width', `${state.ganttLabelWidth}px`);
+    if (resizer) { const max = Math.min(480, Math.max(1, Math.round(window.innerWidth * 0.6))); resizer.setAttribute('aria-valuemin', Math.min(180, max)); resizer.setAttribute('aria-valuemax', max); resizer.setAttribute('aria-valuenow', state.ganttLabelWidth); }
+  }
   function renderGantt(issues) {
+    state.ganttLabelWidth = clampGanttLabelWidth(state.ganttLabelWidth);
     const dayWidth = state.zoom === 'days' ? 38 : 24, days = state.zoom === 'days' ? 56 : 112;
     const start = state.timelineStart, end = C.addDays(start, days - 1), width = dayWidth * days;
     const positions = new Map();
@@ -368,17 +425,16 @@
         return `<button class="schedule-note" data-open="${escape(issue.id)}">${scheduled ? `Outside this window · ${shortDate(schedule.startDate)} – ${shortDate(schedule.dueDate)}` : 'Set start and due dates →'}</button>`;
       }
       const dateRange = `${schedule.startDate} → ${schedule.dueDate}`;
-      const title = summary ? `${issue.id}: duration from child schedules · ${dateRange}` : `${issue.id}: ${dateRange} · ${issue.progress}% · ${C.statuses[index]}`;
-      const barStart = summary ? `<div class="gantt-bar epic-summary-bar" role="img" aria-label="Epic duration from child schedules: ${escape(dateRange)}" title="${escape(title)}"` : `<button class="gantt-bar" data-bar="${escape(issue.id)}" data-day-width="${dayWidth}" data-full-start="${rawStart}" data-full-end="${rawEnd}" aria-label="Edit schedule for ${escape(issue.id)}" title="${escape(title)}"`;
+      const barStart = summary ? `<div class="gantt-bar epic-summary-bar" data-open="${escape(issue.id)}" data-preview-id="${escape(issue.id)}" tabindex="0" role="button" aria-label="Open ${escape(issue.id)}; Epic duration from child schedules: ${escape(dateRange)}"` : `<button class="gantt-bar" data-bar="${escape(issue.id)}" data-preview-id="${escape(issue.id)}" data-day-width="${dayWidth}" data-full-start="${rawStart}" data-full-end="${rawEnd}" aria-label="Edit schedule for ${escape(issue.id)}: ${escape(dateRange)}, ${issue.progress}% complete, ${escape(C.statuses[index])}"`;
       const barEnd = summary ? '</div>' : '</button>';
       const resizeHandle = !summary && rawEnd <= days ? '<span class="resize-handle" title="Drag to change due date"></span>' : '';
       return `${barStart} style="left:${left}px;width:${right - left}px;--bar-bg:${colors[0]};--bar-color:${colors[1]};--bar-border:${colors[2]};--bar-fill:${colors[2]}"><span class="bar-progress" style="width:${Math.max(0, Math.min(100, issue.progress))}%"></span><span class="bar-text">${escape(issue.summary)}</span>${resizeHandle}${barEnd}`;
     };
     const renderTrack = (issue, y, schedule = issue, summary = false) => `<div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px">${renderTrackContent(issue, y, schedule, summary)}</div>`;
-    const renderRows = (items, topOffset) => items.map((issue, row) => {
+    const renderRows = (items, topOffset, laneParentId = '') => ganttHierarchyRows(items, laneParentId).map(({ issue, depth }, row) => {
       const summary = issue.type === 'Epic';
       const schedule = summary ? C.epicScheduleRange(issue.id, state.issues) : issue;
-      return `<div class="gantt-row"><button class="gantt-row-label" data-open="${escape(issue.id)}" title="${escape(issue.summary)}">${typeIcon(issue.type)}<span><strong>${escape(issue.id)}</strong>${escape(issue.summary)}</span></button>${renderTrack(issue, topOffset + row * 45 + 22, schedule, summary)}</div>`;
+      return `<div class="gantt-row"><div class="gantt-row-label" data-open="${escape(issue.id)}" data-preview-id="${escape(issue.id)}" style="--row-depth:${depth}"><button type="button" class="gantt-label-hit" data-open="${escape(issue.id)}" aria-label="Open ${escape(issue.id)}: ${escape(issue.summary)}">${typeIcon(issue.type)}${taskTypeBadge(issue.taskTypeId)}<span class="gantt-label-copy"><strong>${escape(issue.id)}</strong><span class="gantt-label-summary">${escape(issue.summary)}</span></span></button>${ganttAddButton(issue)}</div><div class="gantt-resize-gutter" aria-hidden="true"></div>${renderTrack(issue, topOffset + row * 45 + 22, schedule, summary)}</div>`;
     }).join('');
     let rows = '', rowsHeight = 0;
     if (state.swimlanes) {
@@ -387,15 +443,15 @@
         const topOffset = rowsHeight;
         const epic = lane.id ? issueById(lane.id) : null;
         const epicSchedule = epic ? C.epicScheduleRange(epic.id, state.issues) : null;
-        const epicHeader = `<div class="gantt-row gantt-epic-row"><div class="gantt-row-label gantt-epic-label">${renderSwimlaneHeader(lane, 'gantt-lane-title')}</div>${epic ? renderTrack(epic, topOffset + 22, epicSchedule, true) : `<div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px"></div>`}</div>`;
+        const epicHeader = `<div class="gantt-row gantt-epic-row"><div class="gantt-row-label gantt-epic-label" data-open="${escape(epic?.id || '')}" data-preview-id="${escape(epic?.id || '')}">${renderSwimlaneHeader(lane, 'gantt-lane-title')}${epic ? ganttAddButton(epic) : ''}</div><div class="gantt-resize-gutter" aria-hidden="true"></div>${epic ? renderTrack(epic, topOffset + 22, epicSchedule, true) : `<div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px"></div>`}</div>`;
         rowsHeight += 45;
-        const laneRows = collapsed ? '' : renderRows(lane.items, rowsHeight);
-        if (!collapsed) rowsHeight += lane.items.length * 45;
+        const laneRows = collapsed ? '' : renderRows(lane.items, rowsHeight, lane.id);
+        if (!collapsed) rowsHeight += ganttHierarchyRows(lane.items, lane.id).length * 45;
         return `<section class="gantt-swimlane${collapsed ? ' collapsed' : ''}" data-epic-lane="${escape(lane.id)}">${epicHeader}${laneRows}</section>`;
       }).join('');
     } else {
       rows = renderRows(issues, 0);
-      rowsHeight = issues.length * 45;
+      rowsHeight = ganttHierarchyRows(issues).length * 45;
     }
     let links = '';
     issues.forEach(issue => C.split(issue.dependencies).forEach(id => {
@@ -404,7 +460,8 @@
       links += `<path d="M${from.right},${from.y} H${turn} V${to.y} H${to.left}" fill="none" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrow)"/>`;
     }));
     const todayOffset = C.dateNumber(today()) - C.dateNumber(start);
-    $('#view-content').innerHTML = `<div class="gantt-tools"><div class="left"><button class="button secondary" data-timeline="-1" aria-label="Earlier dates">←</button><button class="button secondary" data-timeline="today">Today</button><button class="button secondary" data-timeline="1" aria-label="Later dates">→</button><input id="timeline-date" type="date" aria-label="Timeline start" value="${start}" min="1900-01-01" max="2200-01-01"></div><div class="right"><span>${shortDate(start)} – ${shortDate(end)} ${end.slice(0, 4)}</span><select id="timeline-zoom" aria-label="Timeline zoom">${options(['weeks', 'days'], state.zoom)}</select></div></div><div class="gantt-viewport"><div class="gantt-grid"><div class="gantt-header"><div class="gantt-label-head">ISSUE / TIMELINE</div><div class="gantt-dates">${Array.from({ length: days }, (_, n) => { const value = C.addDays(start, n), d = new Date(value + 'T12:00:00Z'); return `<div class="gantt-date ${[0, 6].includes(d.getUTCDay()) ? 'weekend' : ''} ${value === today() ? 'today' : ''}" style="width:${dayWidth}px" title="${value}">${d.getUTCDate() === 1 || n === 0 ? d.toLocaleDateString('en', { month: 'short', timeZone: 'UTC' }) : d.toLocaleDateString('en', { weekday: 'narrow', timeZone: 'UTC' })}<strong>${d.getUTCDate()}</strong></div>`; }).join('')}</div></div>${rows}<svg class="timeline-links" width="${width}" height="${rowsHeight}" aria-hidden="true"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10" fill="none" stroke="#CBD5E1"/></marker></defs>${links}</svg>${todayOffset >= 0 && todayOffset < days ? `<div class="today-line" style="left:calc(var(--label-width,260px) + ${todayOffset * dayWidth + dayWidth / 2}px)"></div>` : ''}</div></div><div class="gantt-legend">${C.types.map(type => `<span><i style="background:${typeColors[type]}"></i>${type}</span>`).join('')}<span>┄ Dependency</span><span>Shaded bar = progress</span></div>`;
+    const labelMin = Math.min(180, Math.min(480, Math.max(1, Math.round(window.innerWidth * 0.6)))), labelMax = Math.min(480, Math.max(1, Math.round(window.innerWidth * 0.6)));
+    $('#view-content').innerHTML = `<div class="gantt-tools"><div class="left"><button class="button secondary" data-timeline="-1" aria-label="Earlier dates">←</button><button class="button secondary" data-timeline="today">Today</button><button class="button secondary" data-timeline="1" aria-label="Later dates">→</button><input id="timeline-date" type="date" aria-label="Timeline start" value="${start}" min="1900-01-01" max="2200-01-01"></div><div class="right"><span>${shortDate(start)} – ${shortDate(end)} ${end.slice(0, 4)}</span><select id="timeline-zoom" aria-label="Timeline zoom">${options(['weeks', 'days'], state.zoom)}</select></div></div><div class="gantt-viewport"><div class="gantt-grid" style="--label-width:${state.ganttLabelWidth}px"><div class="gantt-header"><div class="gantt-label-head">ISSUE / TIMELINE</div><div class="gantt-resize-gutter gantt-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize Gantt label pane" aria-valuemin="${labelMin}" aria-valuemax="${labelMax}" aria-valuenow="${state.ganttLabelWidth}" title="Drag or use arrow keys to resize"></div><div class="gantt-dates">${Array.from({ length: days }, (_, n) => { const value = C.addDays(start, n), d = new Date(value + 'T12:00:00Z'); return `<div class="gantt-date ${[0, 6].includes(d.getUTCDay()) ? 'weekend' : ''} ${value === today() ? 'today' : ''}" style="width:${dayWidth}px" title="${value}">${d.getUTCDate() === 1 || n === 0 ? d.toLocaleDateString('en', { month: 'short', timeZone: 'UTC' }) : d.toLocaleDateString('en', { weekday: 'narrow', timeZone: 'UTC' })}<strong>${d.getUTCDate()}</strong></div>`; }).join('')}</div></div>${rows}<svg class="timeline-links" width="${width}" height="${rowsHeight}" aria-hidden="true"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10" fill="none" stroke="#CBD5E1"/></marker></defs>${links}</svg>${todayOffset >= 0 && todayOffset < days ? `<div class="today-line" style="left:calc(var(--label-width,260px) + ${todayOffset * dayWidth + dayWidth / 2}px)"></div>` : ''}</div></div><div class="gantt-legend">${C.types.map(type => `<span><i style="background:${typeColors[type]}"></i>${type}</span>`).join('')}<span>┄ Dependency</span><span>Shaded bar = progress</span></div>`;
   }
   function formSnapshot() { return JSON.stringify([...new FormData(form).entries()]); }
   function openIssue(id = '', defaults = {}) {
@@ -505,9 +562,20 @@
   $('#close-help').addEventListener('click', () => $('#help-dialog').close());
   $('#view-content').addEventListener('click', event => {
     if (state.busy || Date.now() < suppressClickUntil) return;
-    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-timeline], [data-bar], [data-toggle-lane]');
+    if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) document.querySelectorAll('.gantt-quick-popover').forEach(popover => { const row = popover.closest('.gantt-row-label'); if (row) row.style.zIndex = ''; popover.remove(); });
+    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-timeline], [data-bar], [data-toggle-lane], [data-gantt-add]');
     if (!target) return;
     if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
+    else if (target.hasAttribute('data-gantt-add')) {
+      hideGanttCommentPreview();
+      const anchor = target.parentElement, old = anchor.querySelector('.gantt-quick-popover');
+      if (old) { const row = old.closest('.gantt-row-label'); if (row) row.style.zIndex = ''; old.remove(); return; }
+      document.querySelectorAll('.gantt-quick-popover').forEach(popover => { const row = popover.closest('.gantt-row-label'); if (row) row.style.zIndex = ''; popover.remove(); });
+      const epicAdd = target.dataset.ganttAddKind === 'epic', popover = document.createElement('form');
+      popover.className = 'gantt-quick-popover'; popover.dataset.ganttQuickForm = 'true'; popover.dataset.parentId = target.dataset.ganttAdd;
+      popover.innerHTML = `${epicAdd ? '<select name="kind" aria-label="New work item type"><option value="Story">Story</option><option value="Task">Task</option></select>' : '<input type="hidden" name="kind" value="Task">'}<input name="summary" required maxlength="250" placeholder="${epicAdd ? 'Story or task name…' : 'Task name…'}" aria-label="${epicAdd ? 'New story or task name' : 'New task name'}"><button type="submit">Add ${epicAdd ? 'work item' : 'task'}</button>`;
+      anchor.closest('.gantt-row-label').style.zIndex = '15'; anchor.appendChild(popover); popover.elements.summary.focus();
+    }
     else if (target.hasAttribute('data-quick-add')) { const input = target.parentElement.querySelector('[data-quick-title]'); input.dataset.quickKind = target.parentElement.querySelector('[data-quick-kind]').value; input.dataset.quickParentId = target.closest('.swimlane')?.dataset.epicLane || ''; createQuickTask(target.dataset.quickAdd, input); }
     else if (target.hasAttribute('data-new')) openIssue('', { status: target.dataset.new, parentId: state.epic });
     else if (target.hasAttribute('data-clear')) clearFilters();
@@ -515,13 +583,39 @@
     else if (target.hasAttribute('data-timeline')) {
       const next = target.dataset.timeline === 'today' ? C.addDays(today(), -7) : C.addDays(state.timelineStart, Number(target.dataset.timeline) * 28);
       if (C.validDate(next) && next <= '2200-01-01') { state.timelineStart = next; render(); }
-    } else openIssue(target.dataset.open || target.dataset.issue || target.dataset.bar);
+    } else if (state.view === 'gantt' && target.closest('.gantt-row-label, .gantt-bar') && !target.closest('.swimlane-edit')) return;
+    else openIssue(target.dataset.open || target.dataset.issue || target.dataset.bar);
+  });
+  $('#view-content').addEventListener('submit', event => { const formElement = event.target.closest('[data-gantt-quick-form]'); if (!formElement) return; event.preventDefault(); createGanttQuickItem(formElement); });
+  $('#view-content').addEventListener('dblclick', event => {
+    if (state.view !== 'gantt') return;
+    const target = event.target.closest('.gantt-row-label, .gantt-bar');
+    if (!target || event.target.closest('.gantt-add-button, .swimlane-collapse')) return;
+    const id = target.dataset.open || target.dataset.bar; if (!id) return;
+    event.preventDefault(); openIssue(id);
   });
   $('#view-content').addEventListener('mouseover', event => {
+    if (state.view === 'gantt') {
+      const target = event.target.closest('.gantt-row-label[data-preview-id], .gantt-bar[data-preview-id]');
+      if (target && (!event.relatedTarget || !target.contains(event.relatedTarget))) showGanttCommentPreview(target);
+      return;
+    }
     const target = event.target.closest('[data-issue], [data-open]'); if (!target) return;
     const id = target.dataset.issue || target.dataset.open, preview = commentPreview(id); if (preview) target.title = preview.split('\n').slice(-3).join('\n');
   });
-  $('#view-content').addEventListener('keydown', event => { if (event.target.matches('.column-quick-add input') && event.key === 'Enter') { event.preventDefault(); event.target.dataset.quickKind = event.target.parentElement.querySelector('[data-quick-kind]').value; event.target.dataset.quickParentId = event.target.closest('.swimlane')?.dataset.epicLane || ''; createQuickTask(event.target.dataset.quickTitle, event.target); } else if (event.target.matches('.card') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); openIssue(event.target.dataset.issue); } });
+  $('#view-content').addEventListener('mouseout', event => {
+    if (state.view !== 'gantt') return;
+    const source = event.target.closest('.gantt-row-label[data-preview-id], .gantt-bar[data-preview-id]');
+    if (source && !source.contains(event.relatedTarget) && !event.relatedTarget?.closest?.('.gantt-comment-preview')) hideGanttCommentPreview();
+  });
+  $('#view-content').addEventListener('focusin', event => { if (state.view === 'gantt') { const source = event.target.closest('.gantt-row-label[data-preview-id], .gantt-bar[data-preview-id]'); if (source) showGanttCommentPreview(source); } });
+  $('#view-content').addEventListener('focusout', event => { if (state.view === 'gantt' && !event.relatedTarget?.closest?.('.gantt-row-label[data-preview-id], .gantt-bar[data-preview-id]')) hideGanttCommentPreview(); });
+  $('#view-content').addEventListener('keydown', event => {
+    if (event.target.matches('.gantt-resizer') && ['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); applyGanttLabelWidth(state.ganttLabelWidth + (event.key === 'ArrowRight' ? 10 : -10)); saveUiState(); }
+    else if (event.target.matches('.gantt-label-hit, .gantt-bar') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); const target = event.target.closest('[data-open], [data-bar]'); openIssue(target?.dataset.open || target?.dataset.bar); }
+    else if (event.target.matches('.column-quick-add input') && event.key === 'Enter') { event.preventDefault(); event.target.dataset.quickKind = event.target.parentElement.querySelector('[data-quick-kind]').value; event.target.dataset.quickParentId = event.target.closest('.swimlane')?.dataset.epicLane || ''; createQuickTask(event.target.dataset.quickTitle, event.target); }
+    else if (event.target.matches('.card') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); openIssue(event.target.dataset.issue); }
+  });
   $('#view-content').addEventListener('change', async event => {
     const target = event.target;
     if (target.id === 'all-columns') { state.allColumns = target.checked; render(); return; }
@@ -561,12 +655,15 @@
     catch (error) { notify(error.message, true); }
   });
   $('#view-content').addEventListener('pointerdown', event => {
+    const resizer = event.target.closest('.gantt-resizer');
+    if (resizer && event.button === 0 && !state.busy) { event.preventDefault(); ganttResize = { x: event.clientX, width: state.ganttLabelWidth, pointer: event.pointerId, element: resizer }; resizer.setPointerCapture(event.pointerId); return; }
     const bar = event.target.closest('[data-bar]'); if (!bar || event.button !== 0 || state.busy) return;
     const issue = issueById(bar.dataset.bar); if (!issue) return;
     timelineDrag = { bar, issue: { ...issue }, x: event.clientX, width: bar.offsetWidth, left: parseFloat(bar.style.left), days: 0, resize: event.target.classList.contains('resize-handle'), moved: false, pointer: event.pointerId };
     bar.setPointerCapture(event.pointerId);
   });
   $('#view-content').addEventListener('pointermove', event => {
+    if (ganttResize && event.pointerId === ganttResize.pointer) { applyGanttLabelWidth(ganttResize.width + event.clientX - ganttResize.x); return; }
     if (!timelineDrag || event.pointerId !== timelineDrag.pointer) return;
     const d = timelineDrag, dayWidth = Number(d.bar.dataset.dayWidth);
     let days = Math.round((event.clientX - d.x) / dayWidth);
@@ -585,8 +682,15 @@
     try { await persist({ ...d.issue, startDate: d.resize ? d.issue.startDate : C.addDays(d.issue.startDate, d.days), dueDate: C.addDays(d.issue.dueDate, d.days) }, d.issue.version, 'Schedule updated'); }
     catch (error) { render(); notify(error.message, true); }
   }
-  $('#view-content').addEventListener('pointerup', event => endTimeline(event));
-  $('#view-content').addEventListener('pointercancel', event => endTimeline(event, true));
+  function endGanttResize(event) {
+    if (!ganttResize || event.pointerId !== ganttResize.pointer) return false;
+    const resize = ganttResize; ganttResize = null;
+    if (resize.element.hasPointerCapture(event.pointerId)) resize.element.releasePointerCapture(event.pointerId);
+    saveUiState(); return true;
+  }
+  $('#view-content').addEventListener('pointerup', event => { if (!endGanttResize(event)) endTimeline(event); });
+  $('#view-content').addEventListener('pointercancel', event => { if (!endGanttResize(event)) endTimeline(event, true); });
+  window.addEventListener('resize', () => { if (state.view === 'gantt') applyGanttLabelWidth(state.ganttLabelWidth); });
   document.addEventListener('keydown', event => {
     if (event.ctrlKey || event.metaKey || event.altKey || event.target.matches('input,textarea,select') || $('dialog[open]')) return;
     if (event.key === '/') { event.preventDefault(); $('#search').focus(); }

@@ -2,10 +2,10 @@
 var SheetFlowSettings = (function () {
   'use strict';
   var defaults = [
-    ['TYPE-ALGO', 'taskType', 'algo', 'Algo', 'json', true, 10],
-    ['TYPE-DATA', 'taskType', 'data', 'Data', 'json', true, 20],
-    ['TYPE-REQUIREMENTS', 'taskType', 'requirements', 'Requirements', 'json', true, 30],
-    ['TYPE-BUG', 'taskType', 'bug', 'Bug', 'json', true, 40],
+    ['TYPE-ALGO', 'taskType', 'algo', '{"name":"Algo","color":"#2563EB","badge":"A"}', 'json', true, 10],
+    ['TYPE-DATA', 'taskType', 'data', '{"name":"Data","color":"#0F766E","badge":"D"}', 'json', true, 20],
+    ['TYPE-REQUIREMENTS', 'taskType', 'requirements', '{"name":"Requirements","color":"#7C3AED","badge":"R"}', 'json', true, 30],
+    ['TYPE-BUG', 'taskType', 'bug', '{"name":"Bug","color":"#DC2626","badge":"B"}', 'json', true, 40],
     ['DEFAULT-TASK-TYPE', 'workflow', 'defaultTaskType', 'algo', 'text', true, 10],
     ['DEFAULT-STATUS', 'workflow', 'defaultStatus', 'Backlog', 'text', true, 20]
   ];

@@ -133,6 +133,11 @@ Only the title is required when creating a task. Other fields receive configured
 - In Sheet, show each epic as a collapsible table section while preserving sorting and inline editing.
 - In Kanban, keep the status columns aligned across epic lanes.
 - In Gantt, derive the Epic duration from the earliest start and latest due date among its scheduled descendant issues, including Stories and nested Tasks/Bugs; show that read-only summary bar on the lane header and keep one shared date axis.
+- In Gantt, show issues in parent-first hierarchy order: Stories under Epics, Tasks/Bugs under Stories, and direct Epic Tasks/Bugs one level below the Epic. Preserve sibling rank order and filters; indent by actual parent depth without synthesizing filtered-out parent rows.
+- Allow the Gantt label pane divider to be dragged or adjusted with the keyboard. Start at 260px, constrain it to 180–480px and at most 60% of the viewport where possible, and persist the width in browser UI state. Truncate long labels and keep Epic metadata inside the pane.
+- Open an issue editor by double-clicking a Gantt issue label or bar; keep a single bar click available for schedule drag and resize. Keyboard activation opens issue details. Double-clicking a derived Epic summary bar opens Epic details while its schedule remains read-only.
+- Provide quick-add controls on Gantt Epic and Story rows. Epic quick-add can create a Story or direct Task; Story quick-add creates a child Task. New items start in Backlog and use the configured default task type, falling back to Algo.
+- Show a hover/focus preview on Gantt labels and bars with up to the three most recent comments, including author and date. Escape comment text, support long text, and omit the preview when no comments exist.
 - Place issues without an epic in a "No epic" lane.
 - In Kanban, dragging a task between epic lanes updates its epic; crossing a column and lane also updates its status.
 
@@ -205,6 +210,7 @@ Only the title is required when creating a task. Other fields receive configured
   - Display order
   - Active status
 - Configure a default type for new tasks.
+- Store each task type's name, color, and badge in the existing Settings tab Value cell as JSON such as `{"name":"Algo","color":"#2563EB","badge":"A"}`. Continue to accept legacy plain-text names; validate colors as six-digit hex and use safe defaults for missing or invalid fields.
 - Allow renaming without losing task assignments.
 - Allow deactivation while preserving historical usage.
 - Require reassignment before permanently deleting a type in use.
