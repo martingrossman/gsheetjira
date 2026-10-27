@@ -22,3 +22,11 @@ test('Kanban has a flat rendering path and preserves epic relationships', async 
   assert.match(client, /!state\.swimlanes \? issue\.parentId/);
   assert.match(client, /!state\.swimlanes \|\| \(laneId \?/);
 });
+
+test('grouped lanes represent epics once and keep epic details and schedule accessible', async () => {
+  const client = await read('Client.html');
+
+  assert.ok(client.includes('items: issues.filter(issue => issue.id !== epic.id && inEpicWithin(issue, epic.id))'));
+  assert.ok(client.includes('class="swimlane-edit" data-open="${escape(epic.id)}"'));
+  assert.ok(client.includes('epic && issues.some(issue => issue.id === epic.id) ? renderTrack(epic, topOffset + 22)'));
+});

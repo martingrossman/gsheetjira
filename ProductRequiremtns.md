@@ -127,9 +127,10 @@ Only the title is required when creating a task. Other fields receive configured
 - Allow each epic lane and the "No epic" lane to be collapsed and expanded.
 - Keep filtered issues in their epic's lane even when the epic itself is excluded by another active filter.
 - Show task counts and completion progress in each lane header.
+- When swimlanes are enabled, represent each epic once in its lane header instead of repeating it as a regular issue row or card; provide an edit action from the header.
 - In Sheet, show each epic as a collapsible table section while preserving sorting and inline editing.
 - In Kanban, keep the status columns aligned across epic lanes.
-- In Gantt, group timeline rows under epic lane headers while keeping one shared date axis.
+- In Gantt, show the epic's schedule bar on its lane header row, group child issue rows beneath it, and keep one shared date axis.
 - Place issues without an epic in a "No epic" lane.
 - In Kanban, dragging a task between epic lanes updates its epic; crossing a column and lane also updates its status.
 
