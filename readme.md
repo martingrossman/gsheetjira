@@ -75,6 +75,10 @@ Google documents deployment and execution identities in its [web app guide](http
 
 After source changes, rebuild, push, then **Deploy → Manage deployments → Edit → New version → Deploy**. Pushing alone does not update a versioned production deployment.
 
+### Schema v2 migration
+
+The repository now includes a non-destructive schema migration foundation. After pushing the new Apps Script files, run **SheetFlow → Check schema health**, then **SheetFlow → Preview v2 migration**. Resolve every duplicate or invalid legacy row reported by the dry run before choosing **Migrate legacy Issues to v2 tabs**. The migration creates versioned `Tasks`, `Projects and Epics`, `Team`, `Holidays and Availability`, `Settings`, `Change History`, and `_System` tabs, preserves legacy IDs and values, and leaves the original `Issues` tab intact for rollback and comparison.
+
 ## What you can do
 
 - **Sheet:** edit cells directly, sort columns, and toggle all 21 fields. Click an issue ID to open the full editor. Native Google Sheets remains an editable source of truth.

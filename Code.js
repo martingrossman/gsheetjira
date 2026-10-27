@@ -3,6 +3,9 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('SheetFlow')
     .addItem('Set up / repair tracker', 'setupTracker')
     .addItem('Open tracker', 'openTracker')
+    .addItem('Check schema health', 'schemaHealthCheck')
+    .addItem('Preview v2 migration', 'migrationDryRun')
+    .addItem('Migrate legacy Issues to v2 tabs', 'migrateLegacyIssues')
     .addItem('Add sample project to empty tracker', 'loadSampleData').addToUi();
 }
 
