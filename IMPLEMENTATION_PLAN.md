@@ -206,6 +206,8 @@ Each package should be a reviewable change or small series of changes with its o
 
 ### WP-03 — Fast entry, autosave, drafts and undo
 
+Inline Kanban quick creation is a required part of this package: each status column provides a minimal title-only control. It creates a `Task` in that column's status with configured defaults, supports Enter-to-submit and consecutive entry, and opens the full detail editor only when additional fields are needed.
+
 **Dependencies:** WP-01, WP-02. **Requirements:** 2, 4, 16, 17.
 
 - [ ] Add a persistent quick-add title input with Enter submission and configured defaults; reuse it in Kanban columns and a real Sheets sidebar (`QuickAdd.html` and a menu action).
