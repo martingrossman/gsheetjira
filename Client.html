@@ -290,7 +290,7 @@
     const done = workItems.filter(issue => issue.status === 'Done').length;
     const progress = workItems.length ? Math.round(done / workItems.length * 100) : 0;
     const collapsed = laneCollapsed(lane), key = laneCollapsedKey(lane);
-    return `<header class="swimlane-header ${extraClass}"><span class="epic-dot"></span><strong>${escape(lane.label)}</strong><span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span><button type="button" class="swimlane-toggle" data-toggle-lane="${escape(key)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}">${collapsed ? '+' : '−'}</button></header>`;
+    return `<button type="button" class="swimlane-header ${extraClass}" data-toggle-lane="${escape(key)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}"><span class="epic-dot"></span><strong>${escape(lane.label)}</strong><span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span><span class="swimlane-toggle" aria-hidden="true">${collapsed ? '+' : '−'}</span></button>`;
   }
   function renderSheet(issues) {
     const primary = ['id', 'type', 'parentId', 'summary', 'status', 'priority', 'assignee', 'startDate', 'dueDate', 'progress', 'estimate', 'sprint'];
