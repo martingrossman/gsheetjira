@@ -37,7 +37,7 @@
   const isCloud = !!(window.google && google.script && google.script.run);
   const storageKey = 'sheetflow.project.v1';
   const draftStorageKey = 'sheetflow.pending-drafts.v1';
-  const state = { issues: [], drafts: {}, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const state = { issues: [], drafts: {}, quickQueue: [], ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', draggingId = null, timelineDrag = null, suppressClickUntil = 0, toastTimer;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
@@ -146,6 +146,15 @@
       $('#error-banner').hidden = true; syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); render(); notify(message); return issue;
     } catch (error) { showError(error); throw error; }
     finally { setBusy(false); }
+  }
+  async function createQuickTask() {
+    const input = $('#quick-title'), title = input.value.trim();
+    if (!title || !state.ready) return;
+    input.value = '';
+    if (state.busy) { state.quickQueue.push(title); syncText('Task queued…'); return; }
+    try { await persist({ summary: title, type: 'Task', status: 'Backlog', priority: 'Medium' }, undefined, 'Task added'); }
+    catch (ignore) {}
+    finally { if (!state.busy && state.quickQueue.length) { input.value = state.quickQueue.shift(); createQuickTask(); } }
   }
   function issueById(id) { return state.issues.find(i => i.id === id); }
   function inEpic(issue) {
@@ -298,6 +307,8 @@
   $$('[data-view]').forEach(el => el.addEventListener('click', () => setView(el.dataset.view)));
   window.addEventListener('hashchange', () => setView(location.hash.slice(1)));
   $('#create-issue').addEventListener('click', () => openIssue());
+  $('#quick-add').addEventListener('click', createQuickTask);
+  $('#quick-title').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); createQuickTask(); } });
   $('#add-epic').addEventListener('click', () => openIssue('', { type: 'Epic' }));
   $('#refresh').addEventListener('click', () => refresh());
   $('#search').addEventListener('input', event => { state.query = event.target.value; render(); });
