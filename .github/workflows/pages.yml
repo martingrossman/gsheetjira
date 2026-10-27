@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - review_against_POR
   workflow_dispatch:
 
 permissions:
