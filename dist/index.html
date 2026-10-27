@@ -49,7 +49,7 @@
 .field .derived-date-note{font-size:9px;color:var(--muted);font-weight:400}
 .task-type-badge{flex:0 0 18px;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border:1px solid color-mix(in srgb,var(--task-type-color) 24%,white);border-radius:5px;background:color-mix(in srgb,var(--task-type-color) 11%,white);color:var(--task-type-color);font-size:9px;font-weight:700;line-height:1}
 .gantt-grid{--label-width:260px}.gantt-label-head{box-sizing:border-box;width:calc(var(--label-width) - 8px);min-width:calc(var(--label-width) - 8px);flex:0 0 calc(var(--label-width) - 8px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.gantt-row-label{box-sizing:border-box;width:calc(var(--label-width) - 8px)!important;min-width:calc(var(--label-width) - 8px)!important;flex:0 0 calc(var(--label-width) - 8px);padding:0 5px!important;gap:2px;overflow:hidden}.gantt-resize-gutter{box-sizing:border-box;width:8px;min-width:8px;flex:0 0 8px;background:var(--surface-muted);border-right:1px solid var(--line);position:sticky;left:calc(var(--label-width) - 8px);z-index:4}.gantt-resizer{position:sticky;left:calc(var(--label-width) - 8px);cursor:col-resize;touch-action:none;background:linear-gradient(90deg,var(--surface-muted) 3px,var(--line) 3px 4px,var(--surface-muted) 4px);z-index:7}.gantt-resizer:hover,.gantt-resizer:focus-visible{background:linear-gradient(90deg,var(--surface-muted) 2px,var(--primary) 2px 5px,var(--surface-muted) 5px);outline:none}.gantt-row-label .gantt-label-hit{min-width:0;flex:1;display:flex;align-items:center;gap:5px;overflow:hidden;text-align:left;padding:0 0 0 calc(4px + var(--row-depth,0)*12px);font-size:10px}.gantt-label-copy{display:flex;flex-direction:column;min-width:0;flex:1;overflow:hidden}.gantt-label-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-label-summary{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-row-label>.task-type-badge{width:16px;height:16px;flex-basis:16px;font-size:8px}.gantt-add-button{flex:0 0 21px;width:21px;height:21px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--muted);font-size:14px;line-height:1;padding:0;z-index:8}.gantt-add-button:hover,.gantt-add-button:focus-visible{color:var(--primary);border-color:var(--primary);outline:none}.gantt-epic-label{display:flex;align-items:center}.gantt-epic-label .swimlane-header{min-width:0;flex:1;overflow:hidden}.gantt-epic-label .swimlane-collapse{min-width:0;overflow:hidden;gap:4px}.gantt-epic-label .swimlane-collapse strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-epic-label .swimlane-progress,.gantt-epic-label .swimlane-dates{display:none}.gantt-epic-label .swimlane-edit{padding:3px 5px;font-size:8px}.gantt-epic-row .gantt-track{flex:0 0 auto}.timeline-links{left:var(--label-width,260px)}.gantt-bar{max-width:100%}.epic-summary-bar{cursor:pointer;pointer-events:auto}.epic-summary-bar:focus-visible,.gantt-label-hit:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}.gantt-quick-anchor{position:relative;flex:0 0 auto}.gantt-quick-popover{position:absolute;top:25px;right:0;z-index:12;width:230px;padding:9px;display:grid;gap:7px;border:1px solid var(--line);border-radius:7px;background:var(--surface);box-shadow:0 8px 25px #0F172A24}.gantt-quick-popover input,.gantt-quick-popover select{width:100%;min-width:0;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:7px;font-size:10px}.gantt-quick-popover button{padding:6px 9px;border-radius:5px;background:var(--primary);color:white;font-size:10px}.gantt-comment-preview{position:fixed;z-index:30;width:min(300px,calc(100vw - 24px));max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 8px 28px #0F172A26;padding:10px;color:var(--ink);font-size:10px;pointer-events:auto}.gantt-comment-preview h4{font-size:10px;margin:0 0 7px}.gantt-comment-item{border-top:1px solid var(--line);padding:7px 0 2px}.gantt-comment-meta{font-size:8px;color:var(--muted);margin-bottom:4px}.gantt-comment-body{white-space:pre-wrap;overflow-wrap:anywhere;max-height:80px;overflow:auto;line-height:1.45}
-.gantt-row-label{overflow:visible!important}.gantt-quick-popover{left:0;right:auto}
+.gantt-row-label{overflow:visible!important}.gantt-quick-popover{position:fixed;left:0;right:auto;top:auto;z-index:50;max-width:calc(100vw - 24px)}.busy .gantt-quick-popover{pointer-events:none;opacity:.65}
 </style>
 
 </head>
@@ -512,6 +512,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   }
   function render() {
     if (!state.ready) return;
+    closeGanttQuickPopover();
     renderFilters();
     $$('[data-view]').forEach(el => { const active = el.dataset.view === state.view; el.classList.toggle('active', active); if (el.getAttribute('role') === 'tab') { el.setAttribute('aria-selected', String(active)); el.setAttribute('aria-controls', 'view-content'); } });
     const swimlanesToggle = $('#swimlanes-toggle');
@@ -669,6 +670,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     card.addEventListener('pointerleave', hideGanttCommentPreview);
   }
   function hideGanttCommentPreview() { document.querySelector('.gantt-comment-preview')?.remove(); ganttPreviewTarget?.removeAttribute('aria-describedby'); ganttPreviewTarget = null; }
+  function closeGanttQuickPopover() { document.querySelectorAll('.gantt-quick-popover').forEach(popover => popover.remove()); }
   function applyGanttLabelWidth(width) {
     state.ganttLabelWidth = clampGanttLabelWidth(width);
     const grid = $('#view-content .gantt-grid'), resizer = $('#view-content .gantt-resizer');
@@ -835,19 +837,23 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $('#close-help').addEventListener('click', () => $('#help-dialog').close());
   $('#view-content').addEventListener('click', event => {
     if (state.busy || Date.now() < suppressClickUntil) return;
-    if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) document.querySelectorAll('.gantt-quick-popover').forEach(popover => { const row = popover.closest('.gantt-row-label'); if (row) row.style.zIndex = ''; popover.remove(); });
+    if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover();
     const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-timeline], [data-bar], [data-toggle-lane], [data-gantt-add]');
     if (!target) return;
     if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
     else if (target.hasAttribute('data-gantt-add')) {
       hideGanttCommentPreview();
-      const anchor = target.parentElement, old = anchor.querySelector('.gantt-quick-popover');
-      if (old) { const row = old.closest('.gantt-row-label'); if (row) row.style.zIndex = ''; old.remove(); return; }
-      document.querySelectorAll('.gantt-quick-popover').forEach(popover => { const row = popover.closest('.gantt-row-label'); if (row) row.style.zIndex = ''; popover.remove(); });
+      const old = document.querySelector('.gantt-quick-popover');
+      if (old && old.dataset.parentId === target.dataset.ganttAdd) { closeGanttQuickPopover(); return; }
+      closeGanttQuickPopover();
       const epicAdd = target.dataset.ganttAddKind === 'epic', popover = document.createElement('form');
       popover.className = 'gantt-quick-popover'; popover.dataset.ganttQuickForm = 'true'; popover.dataset.parentId = target.dataset.ganttAdd;
       popover.innerHTML = `${epicAdd ? '<select name="kind" aria-label="New work item type"><option value="Story">Story</option><option value="Task">Task</option></select>' : '<input type="hidden" name="kind" value="Task">'}<input name="summary" required maxlength="250" placeholder="${epicAdd ? 'Story or task name…' : 'Task name…'}" aria-label="${epicAdd ? 'New story or task name' : 'New task name'}"><button type="submit">Add ${epicAdd ? 'work item' : 'task'}</button>`;
-      anchor.closest('.gantt-row-label').style.zIndex = '15'; anchor.appendChild(popover); popover.elements.summary.focus();
+      const anchor = target.getBoundingClientRect(), width = Math.min(230, window.innerWidth - 24);
+      popover.style.position = 'fixed'; popover.style.width = `${width}px`; popover.style.zIndex = '50'; document.body.appendChild(popover);
+      const box = popover.getBoundingClientRect(), left = Math.max(12, Math.min(window.innerWidth - box.width - 12, anchor.left));
+      const top = anchor.bottom + box.height + 8 <= window.innerHeight ? anchor.bottom + 6 : Math.max(8, anchor.top - box.height - 6);
+      popover.style.left = `${left}px`; popover.style.top = `${top}px`; popover.elements.summary.focus({ preventScroll: true });
     }
     else if (target.hasAttribute('data-quick-add')) { const input = target.parentElement.querySelector('[data-quick-title]'); input.dataset.quickKind = target.parentElement.querySelector('[data-quick-kind]').value; input.dataset.quickParentId = target.closest('.swimlane')?.dataset.epicLane || ''; createQuickTask(target.dataset.quickAdd, input); }
     else if (target.hasAttribute('data-new')) openIssue('', { status: target.dataset.new, parentId: state.epic });
@@ -859,7 +865,9 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     } else if (state.view === 'gantt' && target.closest('.gantt-row-label, .gantt-bar') && !target.closest('.swimlane-edit')) return;
     else openIssue(target.dataset.open || target.dataset.issue || target.dataset.bar);
   });
-  $('#view-content').addEventListener('submit', event => { const formElement = event.target.closest('[data-gantt-quick-form]'); if (!formElement) return; event.preventDefault(); createGanttQuickItem(formElement); });
+  document.addEventListener('submit', event => { const formElement = event.target.closest('[data-gantt-quick-form]'); if (!formElement) return; event.preventDefault(); createGanttQuickItem(formElement); });
+  document.addEventListener('click', event => { if (!event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover(); });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') closeGanttQuickPopover(); });
   $('#view-content').addEventListener('dblclick', event => {
     if (state.view !== 'gantt') return;
     const target = event.target.closest('.gantt-row-label, .gantt-bar');
