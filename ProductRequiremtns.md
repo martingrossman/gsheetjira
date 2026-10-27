@@ -130,7 +130,7 @@ Only the title is required when creating a task. Other fields receive configured
 - When swimlanes are enabled, represent each epic once in its lane header instead of repeating it as a regular issue row or card; provide an edit action from the header.
 - In Sheet, show each epic as a collapsible table section while preserving sorting and inline editing.
 - In Kanban, keep the status columns aligned across epic lanes.
-- In Gantt, show the epic's schedule bar on its lane header row, group child issue rows beneath it, and keep one shared date axis.
+- In Gantt, derive the Epic duration from the earliest start and latest due date among its scheduled descendant issues, including Stories and nested Tasks/Bugs; show that read-only summary bar on the lane header and keep one shared date axis.
 - Place issues without an epic in a "No epic" lane.
 - In Kanban, dragging a task between epic lanes updates its epic; crossing a column and lane also updates its status.
 

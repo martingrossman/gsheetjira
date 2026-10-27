@@ -28,5 +28,6 @@ test('grouped lanes represent epics once and keep epic details and schedule acce
 
   assert.ok(client.includes('items: issues.filter(issue => issue.id !== epic.id && inEpicWithin(issue, epic.id))'));
   assert.ok(client.includes('class="swimlane-edit" data-open="${escape(epic.id)}"'));
-  assert.ok(client.includes('epic && issues.some(issue => issue.id === epic.id) ? renderTrack(epic, topOffset + 22)'));
+  assert.ok(client.includes('const epicSchedule = epic ? C.epicScheduleRange(epic.id, state.issues) : null;'));
+  assert.ok(client.includes('renderTrack(epic, topOffset + 22, epicSchedule, true)'));
 });

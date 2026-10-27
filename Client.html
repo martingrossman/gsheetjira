@@ -329,10 +329,10 @@
     const dayWidth = state.zoom === 'days' ? 38 : 24, days = state.zoom === 'days' ? 56 : 112;
     const start = state.timelineStart, end = C.addDays(start, days - 1), width = dayWidth * days;
     const positions = new Map();
-    const renderTrackContent = (issue, y) => {
-      const scheduled = C.validDate(issue.startDate) && C.validDate(issue.dueDate) && issue.dueDate >= issue.startDate;
-      const rawStart = scheduled ? C.dateNumber(issue.startDate) - C.dateNumber(start) : 0;
-      const rawEnd = scheduled ? C.dateNumber(issue.dueDate) - C.dateNumber(start) + 1 : 0;
+    const renderTrackContent = (issue, y, schedule = issue, summary = false) => {
+      const scheduled = !!schedule && C.validDate(schedule.startDate) && C.validDate(schedule.dueDate) && schedule.dueDate >= schedule.startDate;
+      const rawStart = scheduled ? C.dateNumber(schedule.startDate) - C.dateNumber(start) : 0;
+      const rawEnd = scheduled ? C.dateNumber(schedule.dueDate) - C.dateNumber(start) + 1 : 0;
       const left = Math.max(0, rawStart) * dayWidth + 3, right = Math.min(days, rawEnd) * dayWidth - 3;
       const visible = scheduled && right > left;
       if (visible) positions.set(issue.id, { left, right, y });
@@ -342,17 +342,31 @@
         Task: ['#EFF6FF', '#1D4ED8', '#BFDBFE'],
         Bug: ['#FEF2F2', '#B91C1C', '#FECACA']
       }[issue.type] || ['#EFF6FF', '#1D4ED8', '#BFDBFE'];
-      return visible ? `<button class="gantt-bar" data-bar="${escape(issue.id)}" data-day-width="${dayWidth}" data-full-start="${rawStart}" data-full-end="${rawEnd}" style="left:${left}px;width:${right - left}px;--bar-bg:${colors[0]};--bar-color:${colors[1]};--bar-border:${colors[2]};--bar-fill:${colors[2]}" title="${escape(`${issue.id}: ${issue.startDate} → ${issue.dueDate} · ${issue.progress}% · ${C.statuses[index]}`)}" aria-label="Edit schedule for ${escape(issue.id)}"><span class="bar-progress" style="width:${Math.max(0, Math.min(100, issue.progress))}%"></span><span class="bar-text">${escape(issue.summary)}</span>${rawEnd <= days ? '<span class="resize-handle" title="Drag to change due date"></span>' : ''}</button>` : `<button class="schedule-note" data-open="${escape(issue.id)}">${scheduled ? `Outside this window · ${shortDate(issue.startDate)} – ${shortDate(issue.dueDate)}` : 'Set start and due dates →'}</button>`;
+      if (!visible) {
+        if (summary) return `<span class="schedule-note epic-schedule-note">${scheduled ? `Outside this window · ${shortDate(schedule.startDate)} – ${shortDate(schedule.dueDate)}` : 'Schedule child issues to set epic duration'}</span>`;
+        return `<button class="schedule-note" data-open="${escape(issue.id)}">${scheduled ? `Outside this window · ${shortDate(schedule.startDate)} – ${shortDate(schedule.dueDate)}` : 'Set start and due dates →'}</button>`;
+      }
+      const dateRange = `${schedule.startDate} → ${schedule.dueDate}`;
+      const title = summary ? `${issue.id}: duration from child schedules · ${dateRange}` : `${issue.id}: ${dateRange} · ${issue.progress}% · ${C.statuses[index]}`;
+      const barStart = summary ? `<div class="gantt-bar epic-summary-bar" role="img" aria-label="Epic duration from child schedules: ${escape(dateRange)}" title="${escape(title)}"` : `<button class="gantt-bar" data-bar="${escape(issue.id)}" data-day-width="${dayWidth}" data-full-start="${rawStart}" data-full-end="${rawEnd}" aria-label="Edit schedule for ${escape(issue.id)}" title="${escape(title)}"`;
+      const barEnd = summary ? '</div>' : '</button>';
+      const resizeHandle = !summary && rawEnd <= days ? '<span class="resize-handle" title="Drag to change due date"></span>' : '';
+      return `${barStart} style="left:${left}px;width:${right - left}px;--bar-bg:${colors[0]};--bar-color:${colors[1]};--bar-border:${colors[2]};--bar-fill:${colors[2]}"><span class="bar-progress" style="width:${Math.max(0, Math.min(100, issue.progress))}%"></span><span class="bar-text">${escape(issue.summary)}</span>${resizeHandle}${barEnd}`;
     };
-    const renderTrack = (issue, y) => `<div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px">${renderTrackContent(issue, y)}</div>`;
-    const renderRows = (items, topOffset) => items.map((issue, row) => `<div class="gantt-row"><button class="gantt-row-label" data-open="${escape(issue.id)}" title="${escape(issue.summary)}">${typeIcon(issue.type)}<span><strong>${escape(issue.id)}</strong>${escape(issue.summary)}</span></button>${renderTrack(issue, topOffset + row * 45 + 22)}</div>`).join('');
+    const renderTrack = (issue, y, schedule = issue, summary = false) => `<div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px">${renderTrackContent(issue, y, schedule, summary)}</div>`;
+    const renderRows = (items, topOffset) => items.map((issue, row) => {
+      const summary = issue.type === 'Epic';
+      const schedule = summary ? C.epicScheduleRange(issue.id, state.issues) : issue;
+      return `<div class="gantt-row"><button class="gantt-row-label" data-open="${escape(issue.id)}" title="${escape(issue.summary)}">${typeIcon(issue.type)}<span><strong>${escape(issue.id)}</strong>${escape(issue.summary)}</span></button>${renderTrack(issue, topOffset + row * 45 + 22, schedule, summary)}</div>`;
+    }).join('');
     let rows = '', rowsHeight = 0;
     if (state.swimlanes) {
       rows = epicLanes(issues).map(lane => {
         const collapsed = laneCollapsed(lane);
         const topOffset = rowsHeight;
         const epic = lane.id ? issueById(lane.id) : null;
-        const epicHeader = `<div class="gantt-row gantt-epic-row"><div class="gantt-row-label gantt-epic-label">${renderSwimlaneHeader(lane, 'gantt-lane-title')}</div>${epic && issues.some(issue => issue.id === epic.id) ? renderTrack(epic, topOffset + 22) : `<div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px"></div>`}</div>`;
+        const epicSchedule = epic ? C.epicScheduleRange(epic.id, state.issues) : null;
+        const epicHeader = `<div class="gantt-row gantt-epic-row"><div class="gantt-row-label gantt-epic-label">${renderSwimlaneHeader(lane, 'gantt-lane-title')}</div>${epic ? renderTrack(epic, topOffset + 22, epicSchedule, true) : `<div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px"></div>`}</div>`;
         rowsHeight += 45;
         const laneRows = collapsed ? '' : renderRows(lane.items, rowsHeight);
         if (!collapsed) rowsHeight += lane.items.length * 45;

@@ -48,6 +48,17 @@ test('changing parent type cannot orphan its children', () => {
   const epic = make({ type: 'Epic' }), story = make({ id: 'PRJ-2', type: 'Story', parentId: epic.id });
   assert.throws(() => C.validate({ ...epic, type: 'Task' }, [epic, story]));
 });
+test('epic schedule range follows the earliest start and latest due date of scheduled descendants', () => {
+  const epic = make({ type: 'Epic', startDate: '2027-01-01', dueDate: '2027-12-31' });
+  const story = make({ id: 'PRJ-2', type: 'Story', parentId: epic.id, startDate: '2026-04-01', dueDate: '2026-04-30' });
+  const nestedTask = make({ id: 'PRJ-3', type: 'Task', parentId: story.id, startDate: '2026-03-25', dueDate: '2026-05-02' });
+  const directTask = make({ id: 'PRJ-4', type: 'Task', parentId: epic.id, startDate: '2026-05-01', dueDate: '2026-05-11' });
+  const unscheduledTask = make({ id: 'PRJ-5', type: 'Task', parentId: epic.id, startDate: '', dueDate: '2026-08-01' });
+  const unrelatedTask = make({ id: 'PRJ-6', type: 'Task', startDate: '2026-01-01', dueDate: '2026-01-02' });
+
+  assert.deepEqual(C.epicScheduleRange(epic.id, [epic, story, nestedTask, directTask, unscheduledTask, unrelatedTask]), { startDate: '2026-03-25', dueDate: '2026-05-11' });
+  assert.equal(C.epicScheduleRange(epic.id, [epic, unscheduledTask]), null);
+});
 test('missing, self-referential and cyclic dependencies are rejected', () => {
   const a = make(), b = make({ id: 'PRJ-2', dependencies: a.id });
   assert.throws(() => C.validate({ ...a, dependencies: a.id }, [a]));

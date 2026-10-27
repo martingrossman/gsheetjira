@@ -83,6 +83,29 @@ var TrackerCore = (function () {
     var linked = issues.filter(function (i) { return i.parentId === id || split(i.dependencies).includes(id); });
     if (linked.length) throw new Error('Remove parent/dependency links from ' + linked.map(function (i) { return i.id; }).join(', ') + ' before deleting.');
   }
+  function epicScheduleRange(epicId, issues) {
+    var byId = new Map(issues.map(function (issue) { return [issue.id, issue]; }));
+    var epic = byId.get(epicId);
+    if (!epic || epic.type !== 'Epic') return null;
+    function belongsToEpic(issue) {
+      var current = issue, seen = new Set();
+      while (current && !seen.has(current.id)) {
+        if (current.id === epicId) return issue.id !== epicId;
+        seen.add(current.id);
+        current = byId.get(current.parentId);
+      }
+      return false;
+    }
+    var scheduled = issues.filter(function (issue) {
+      return issue.type !== 'Epic' && belongsToEpic(issue) && validDate(issue.startDate) && validDate(issue.dueDate) && issue.dueDate >= issue.startDate;
+    });
+    if (!scheduled.length) return null;
+    return scheduled.reduce(function (range, issue) {
+      if (issue.startDate < range.startDate) range.startDate = issue.startDate;
+      if (issue.dueDate > range.dueDate) range.dueDate = issue.dueDate;
+      return range;
+    }, { startDate: scheduled[0].startDate, dueDate: scheduled[0].dueDate });
+  }
   function sorted(issues) { return issues.slice().sort(function (a, b) { return a.rank - b.rank || a.id.localeCompare(b.id, undefined, { numeric: true }); }); }
   function csv(issues) {
     function cell(v) { v = String(v == null ? '' : v); if (/^[\s]*[=+@-]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
@@ -108,6 +131,6 @@ var TrackerCore = (function () {
       return Object.assign(blank(), { id: 'PRJ-' + (n + 1), type: s[0], parentId: s[1], summary: s[2], status: s[3], priority: s[4], assignee: s[5], reporter: 'Alex Morgan', startDate: addDays(today, s[6]), dueDate: addDays(today, s[7]), progress: s[8], labels: s[9], dependencies: s[10], estimate: s[11], timeSpent: Math.round(s[11] * s[8] / 100), description: 'Sample issue. Replace this description with context, acceptance criteria, and links.', sprint: 'Sprint 01', completedDate: s[3] === 'Done' ? addDays(today, s[7]) : '', createdAt: today + 'T09:00:00.000Z', updatedAt: today + 'T09:00:00.000Z', rank: (n + 1) * 1000 });
     });
   }
-  return { types: types, statuses: statuses, priorities: priorities, fields: fields, blank: blank, prepare: prepare, validate: validate, canDelete: canDelete, sorted: sorted, split: split, dateNumber: dateNumber, addDays: addDays, validDate: validDate, csv: csv, sample: sample };
+  return { types: types, statuses: statuses, priorities: priorities, fields: fields, blank: blank, prepare: prepare, validate: validate, canDelete: canDelete, epicScheduleRange: epicScheduleRange, sorted: sorted, split: split, dateNumber: dateNumber, addDays: addDays, validDate: validDate, csv: csv, sample: sample };
 })();
 if (typeof module !== 'undefined') module.exports = TrackerCore;
