@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="One project, three perspectives. Plan work in a sheet, move it on a board, and see the timeline.">
+  <title>SheetFlow — Project tracker</title>
+  <?!= include_('Styles'); ?>
+</head>
+<body data-initial-view="<?= initialView ?>">
+  <aside class="sidebar" aria-label="Workspace navigation">
+    <a class="brand" href="#kanban" aria-label="SheetFlow home"><span class="brand-mark">s<span></span></span>sheetflow<span class="brand-period">.</span></a>
+    <div class="workspace"><span class="workspace-icon">P</span><div><strong>Project workspace</strong><small>Your team's next chapter</small></div></div>
+    <div class="nav-caption">WORKSPACE</div>
+    <nav class="view-nav">
+      <button data-view="sheet"><span data-icon="sheet"></span>Sheet<span class="nav-key">1</span></button>
+      <button data-view="kanban"><span data-icon="board"></span>Kanban<span class="nav-key">2</span></button>
+      <button data-view="gantt"><span data-icon="timeline"></span>Gantt<span class="nav-key">3</span></button>
+    </nav>
+    <div class="nav-caption epic-caption">EPICS <button id="add-epic" class="icon-button" aria-label="Create epic">+</button></div>
+    <nav id="epic-nav" class="epic-nav" aria-label="Filter by epic"></nav>
+    <div class="sidebar-bottom">
+      <div class="connection-card"><span class="connection-icon" data-icon="sheet"></span><strong id="connection-title">Opening workspace</strong><small id="connection-detail">Loading your project…</small><a id="sheet-link" target="_blank" rel="noopener" hidden>Open Google Sheet <span>↗</span></a></div>
+      <button id="help-button" class="help-button"><span data-icon="help"></span>Getting started<span>↗</span></button>
+    </div>
+  </aside>
+  <div class="app-shell">
+    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong>Project tracker</strong></div><div class="topbar-right"><span id="sync-status" class="sync-status" role="status">Loading…</span><span class="profile" title="Project workspace">P</span></div></header>
+    <main>
+      <div class="page-heading"><div><div class="eyebrow">A LITTLE STRUCTURE. A LOT OF POSSIBILITY.</div><h1>Good work starts here<span>.</span></h1><p>From the big picture to the next small step. Keep it all in flow.</p></div><button id="create-issue" class="button primary"><span data-icon="plus"></span>Create issue</button></div>
+      <div class="stats" id="stats" aria-label="Project statistics"></div>
+      <div class="view-bar"><div class="tabs" role="tablist" aria-label="Project view"><button data-view="sheet" role="tab"><span data-icon="sheet"></span>Sheet</button><button data-view="kanban" role="tab"><span data-icon="board"></span>Kanban</button><button data-view="gantt" role="tab"><span data-icon="timeline"></span>Gantt</button></div><div class="view-actions"><button id="refresh" class="button subtle"><span data-icon="refresh"></span><span>Refresh</span></button><button id="export" class="button subtle"><span data-icon="download"></span><span>Export CSV</span></button></div></div>
+      <div class="toolbar"><label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="Search issues…" aria-label="Search issues"><kbd>/</kbd></label><div class="filters"><select id="type-filter" aria-label="Filter by type"><option value="">All types</option></select><select id="assignee-filter" aria-label="Filter by assignee"><option value="">Anyone</option></select><select id="status-filter" aria-label="Filter by status"><option value="">All statuses</option></select><select id="sprint-filter" aria-label="Filter by sprint"><option value="">All sprints</option></select><button id="clear-filters" class="button subtle" hidden>Clear filters</button></div><span id="issue-count" class="issue-count"></span></div>
+      <div id="filter-context" class="filter-context" hidden></div>
+      <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      <section id="view-content" aria-label="Project issues"><div class="empty-state"><div class="loader"></div><h2>Getting your workspace ready</h2><p>Your issues will appear here.</p></div></section>
+      <footer class="view-footer"><span id="view-hint"></span><span class="footer-wordmark">MADE FOR MOVING FORWARD <span>↗</span></span></footer>
+    </main>
+  </div>
+  <dialog id="issue-dialog" class="issue-dialog" aria-labelledby="dialog-title">
+    <form id="issue-form">
+      <div class="dialog-header"><div><span id="dialog-id" class="eyebrow">NEW ISSUE</span><h2 id="dialog-title">Make the next move.</h2></div><button type="button" id="close-dialog" class="icon-button" aria-label="Close issue">×</button></div>
+      <div class="form-body"><div id="form-error" class="error-banner" role="alert" hidden></div>
+        <label class="field">Summary <input name="summary" required maxlength="250" placeholder="What needs to happen?"></label>
+        <label class="field">Description <textarea name="description" rows="4" maxlength="20000" placeholder="Add context, acceptance criteria, or helpful links…"></textarea></label>
+        <div class="form-grid"><label class="field">Issue type<select name="type"></select></label><label class="field">Status<select name="status"></select></label><label class="field">Priority<select name="priority"></select></label><label class="field">Parent issue<select name="parentId"></select></label><label class="field">Assignee<input name="assignee" list="people" maxlength="200" placeholder="Unassigned"></label><label class="field">Reporter<input name="reporter" list="people" maxlength="200" placeholder="Your name"></label><label class="field">Start date<input name="startDate" type="date" min="1900-01-01" max="2200-12-31"></label><label class="field">Due date<input name="dueDate" type="date" min="1900-01-01" max="2200-12-31"></label><label class="field">Estimate (hours)<input name="estimate" type="number" min="0" step="0.25"></label><label class="field">Time spent (hours)<input name="timeSpent" type="number" min="0" step="0.25"></label><label class="field">Progress (%)<input name="progress" type="number" min="0" max="100" step="1"></label><label class="field">Sprint<input name="sprint" list="sprints" maxlength="200" placeholder="e.g. Sprint 01"></label></div>
+        <label class="field">Labels<input name="labels" maxlength="2000" placeholder="design, frontend, research"><small>Separate labels with commas.</small></label>
+        <label class="field">Depends on<input name="dependencies" maxlength="2000" placeholder="PRJ-4, PRJ-5"><small>Issue IDs, separated by commas. Dependencies do not automatically move dates.</small></label>
+        <div id="issue-metadata" class="issue-metadata"></div><div id="child-issues"></div>
+      </div>
+      <div class="dialog-footer"><button type="button" id="delete-issue" class="button danger" hidden>Delete issue</button><div><button type="button" id="cancel-dialog" class="button secondary">Cancel</button><button type="submit" id="save-issue" class="button primary">Save issue</button></div></div>
+    </form>
+  </dialog>
+  <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title"><div class="dialog-header"><h2 id="help-title">One project. Three perspectives.</h2><button class="icon-button" id="close-help" aria-label="Close help">×</button></div><div class="help-body"><p><strong>Sheet</strong> is your editable issue register. Change cells directly, or open an issue for every detail.</p><p><strong>Kanban</strong> keeps work moving. Drag a card to change its status or reorder it. You can also change status in the issue editor, including on touch devices.</p><p><strong>Gantt</strong> shows your schedule. Drag a bar to move its dates; drag the right edge to change its due date. Open an issue for precise dates and dependencies.</p><p><strong>Hierarchy:</strong> epics contain stories; tasks and bugs can belong to either. Choose an epic in the sidebar to focus on all its descendants.</p><p id="help-storage"></p><p><strong>Shortcuts:</strong> 1 / 2 / 3 switch views, / searches, N creates an issue, Esc closes an editor.</p><p>CSV export includes all fields for the currently filtered issues.</p></div></dialog>
+  <datalist id="people"></datalist><datalist id="sprints"></datalist>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <?!= include_('CoreScript'); ?>
+  <?!= include_('Client'); ?>
+</body>
+</html>

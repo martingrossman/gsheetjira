@@ -1,0 +1,22 @@
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import vm from 'node:vm';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const read = name => readFile(path.join(root, name), 'utf8');
+const core = await read('Core.js');
+new vm.Script(core, { filename: 'Core.js' });
+new vm.Script(await read('Code.js'), { filename: 'Code.js' });
+const browserCore = `<script>\n${core}\n</script>\n`;
+await writeFile(path.join(root, 'CoreScript.html'), browserCore);
+let html = await read('Index.html');
+for (const name of ['Styles', 'CoreScript', 'Client']) {
+  const content = name === 'CoreScript' ? browserCore : await read(name + '.html');
+  html = html.replace(`<?!= include_('${name}'); ?>`, () => content);
+}
+html = html.replace('<?= initialView ?>', 'kanban');
+for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new vm.Script(match[1], { filename: 'browser-script' });
+if (html.includes('<?')) throw new Error('Unresolved Apps Script template');
+await mkdir(path.join(root, 'dist'), { recursive: true });
+await writeFile(path.join(root, 'dist', 'index.html'), html);
+console.log('Built dist/index.html and CoreScript.html. No external assets or runtime dependencies.');
