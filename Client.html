@@ -40,7 +40,7 @@
   const uiStorageKey = 'sheetflow.ui.v1';
   const noEpicLaneKey = '__no_epic__';
   const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], collapsedEpics: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
-  let edited = null, initialForm = '', draggingId = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, toastTimer, epicDateFormValues = null;
+  let edited = null, initialForm = '', draggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.swimlanes = ui.swimlanes !== false; state.ganttLabelWidth = clampGanttLabelWidth(ui.ganttLabelWidth || 260); } catch (ignore) { state.collapsedEpics = {}; }
@@ -315,7 +315,8 @@
     const dates = epic ? effectiveDates(epic) : null;
     const collapsed = laneCollapsed(lane), key = laneCollapsedKey(lane);
     const range = dates?.startDate && dates?.dueDate ? `<span class="swimlane-dates">${shortDate(dates.startDate)} – ${shortDate(dates.dueDate)}</span>` : '';
-    return `<div class="swimlane-header ${extraClass}"><button type="button" class="swimlane-collapse" data-toggle-lane="${escape(key)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}"><span class="epic-dot"></span>${epic ? `<span class="swimlane-epic-id">${typeIcon('Epic')}${escape(epic.id)}</span>${taskTypeBadge(epic.taskTypeId)}` : ''}<strong>${escape(lane.label)}</strong>${epic ? `<span class="status-badge" style="--status-bg:${statusBg[statusIndex] || '#F1F5F9'};--status-color:${statusColors[statusIndex] || '#64748B'}">${escape(epic.status)}</span>` : ''}${range}<span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span><span class="swimlane-toggle" aria-hidden="true">${collapsed ? '+' : '−'}</span></button>${epic ? `<button type="button" class="swimlane-edit" data-open="${escape(epic.id)}" aria-label="Edit epic ${escape(epic.id)}" title="Edit epic">Edit</button>` : ''}</div>`;
+    const dragHint = epic && extraClass.includes('gantt-lane-title') ? '; drag to reorder' : '';
+    return `<div class="swimlane-header ${extraClass}"><button type="button" class="swimlane-collapse" data-toggle-lane="${escape(key)}" ${epic && extraClass.includes('gantt-lane-title') ? `draggable="true" data-gantt-drag-id="${escape(epic.id)}"` : ''} aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}${dragHint}"><span class="epic-dot"></span>${epic ? `<span class="swimlane-epic-id">${typeIcon('Epic')}${escape(epic.id)}</span>${taskTypeBadge(epic.taskTypeId)}` : ''}<strong>${escape(lane.label)}</strong>${epic ? `<span class="status-badge" style="--status-bg:${statusBg[statusIndex] || '#F1F5F9'};--status-color:${statusColors[statusIndex] || '#64748B'}">${escape(epic.status)}</span>` : ''}${range}<span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span><span class="swimlane-toggle" aria-hidden="true">${collapsed ? '+' : '−'}</span></button>${epic ? `<button type="button" class="swimlane-edit" data-open="${escape(epic.id)}" aria-label="Edit epic ${escape(epic.id)}" title="Edit epic">Edit</button>` : ''}</div>`;
   }
   function renderSheet(issues) {
     const primary = ['id', 'type', 'parentId', 'summary', 'status', 'priority', 'assignee', 'startDate', 'dueDate', 'progress', 'estimate', 'sprint'];
@@ -378,6 +379,56 @@
     if (!['Epic', 'Story'].includes(issue.type)) return '';
     return `<span class="gantt-quick-anchor"><button type="button" class="gantt-add-button" data-gantt-add="${escape(issue.id)}" data-gantt-add-kind="${issue.type === 'Epic' ? 'epic' : 'story'}" aria-label="Add work under ${escape(issue.id)}" title="Add work under ${escape(issue.id)}">＋</button></span>`;
   }
+  function ganttCanParent(issue, parent) {
+    return parent && ((parent.type === 'Epic' && ['Story', 'Task', 'Bug'].includes(issue.type)) || (parent.type === 'Story' && ['Task', 'Bug'].includes(issue.type)));
+  }
+  function ganttParentIsValid(issue, parentId) {
+    if (!parentId) return issue.type !== 'Epic';
+    const parent = issueById(parentId);
+    return Boolean(parent && ganttCanParent(issue, parent));
+  }
+  function ganttSiblingItems(issue, parentId) {
+    return C.sorted(state.issues.filter(item => item.id !== issue.id && item.parentId === parentId && (issue.type === 'Epic' ? item.type === 'Epic' : item.type !== 'Epic')));
+  }
+  function ganttAppendRank(issue, parentId) { return (ganttSiblingItems(issue, parentId).at(-1)?.rank || 0) + 1000; }
+  function ganttSiblingRank(issue, parentId, targetId, position) {
+    const siblings = ganttSiblingItems(issue, parentId), index = siblings.findIndex(item => item.id === targetId);
+    if (index < 0) return (siblings.at(-1)?.rank || 0) + 1000;
+    const targetRank = Number(siblings[index].rank) || 0;
+    if (position === 'before') {
+      const previousRank = index ? Number(siblings[index - 1].rank) : targetRank - 1000;
+      return targetRank - previousRank > 0.001 ? (targetRank + previousRank) / 2 : targetRank - 0.001;
+    }
+    const nextRank = index + 1 < siblings.length ? Number(siblings[index + 1].rank) : targetRank + 1000;
+    return nextRank - targetRank > 0.001 ? (targetRank + nextRank) / 2 : targetRank + 0.001;
+  }
+  function ganttDropPlan(issue, target, zone, unparent = false) {
+    if (unparent) {
+      if (issue.type === 'Epic') return null;
+      return { parentId: '', rank: ganttAppendRank(issue, '') };
+    }
+    if (!target || target.id === issue.id) return null;
+    if (zone === 'parent' && ganttCanParent(issue, target)) return { parentId: target.id, rank: ganttAppendRank(issue, target.id) };
+    if (issue.type === 'Epic') return target.type === 'Epic' ? { parentId: '', rank: ganttSiblingRank(issue, '', target.id, zone) } : null;
+    const parentId = target.parentId || '';
+    if (!ganttParentIsValid(issue, parentId)) return null;
+    return { parentId, rank: ganttSiblingRank(issue, parentId, target.id, zone) };
+  }
+  function ganttDropZone(issue, target, row, clientY) {
+    if (target.type === 'Epic' && ganttCanParent(issue, target)) return 'parent';
+    const rect = row.getBoundingClientRect(), ratio = (clientY - rect.top) / Math.max(1, rect.height);
+    if (ratio > 0.25 && ratio < 0.75 && ganttCanParent(issue, target)) return 'parent';
+    return ratio < 0.5 ? 'before' : 'after';
+  }
+  async function saveGanttHierarchyDrop(movingId, unparent, targetId, zone) {
+    const moving = issueById(movingId), target = targetId && issueById(targetId);
+    if (!moving || state.busy) return;
+    const plan = ganttDropPlan(moving, target, zone, unparent);
+    if (!plan) { notify(moving.type === 'Epic' && unparent ? 'Epics cannot be unparented.' : 'That parent would create an invalid hierarchy.', true); return; }
+    if (moving.parentId === plan.parentId && moving.rank === plan.rank) return;
+    try { await persist({ ...moving, parentId: plan.parentId, rank: plan.rank }, moving.version, 'Hierarchy updated'); }
+    catch (error) { notify(error.message, true); }
+  }
   async function createGanttQuickItem(formElement) {
     const title = formElement.elements.summary.value.trim(), parentId = formElement.dataset.parentId, kind = formElement.elements.kind?.value || 'Task';
     if (!title || !parentId || state.busy) return;
@@ -436,7 +487,7 @@
     const renderRows = (items, topOffset, laneParentId = '') => ganttHierarchyRows(items, laneParentId).map(({ issue, depth }, row) => {
       const summary = issue.type === 'Epic';
       const schedule = summary ? C.epicScheduleRange(issue.id, state.issues) : issue;
-      return `<div class="gantt-row"><div class="gantt-row-label" data-open="${escape(issue.id)}" data-preview-id="${escape(issue.id)}" style="--row-depth:${depth}"><button type="button" class="gantt-label-hit" data-open="${escape(issue.id)}" aria-label="Open ${escape(issue.id)}: ${escape(issue.summary)}">${typeIcon(issue.type)}${taskTypeBadge(issue.taskTypeId)}<span class="gantt-label-copy"><strong>${escape(issue.id)}</strong><span class="gantt-label-summary">${escape(issue.summary)}</span></span></button>${ganttAddButton(issue)}</div><div class="gantt-resize-gutter" aria-hidden="true"></div>${renderTrack(issue, topOffset + row * 45 + 22, schedule, summary)}</div>`;
+      return `<div class="gantt-row" data-gantt-row-id="${escape(issue.id)}"><div class="gantt-row-label" data-open="${escape(issue.id)}" data-preview-id="${escape(issue.id)}" style="--row-depth:${depth}"><button type="button" class="gantt-label-hit" draggable="true" data-gantt-drag-id="${escape(issue.id)}" data-open="${escape(issue.id)}" aria-label="Open ${escape(issue.id)}: ${escape(issue.summary)}. Drag to reorder or change parent.">${typeIcon(issue.type)}${taskTypeBadge(issue.taskTypeId)}<span class="gantt-label-copy"><strong>${escape(issue.id)}</strong><span class="gantt-label-summary">${escape(issue.summary)}</span></span></button>${ganttAddButton(issue)}</div><div class="gantt-resize-gutter" aria-hidden="true"></div>${renderTrack(issue, topOffset + row * 45 + 22, schedule, summary)}</div>`;
     }).join('');
     let rows = '', rowsHeight = 0;
     if (state.swimlanes) {
@@ -445,7 +496,7 @@
         const topOffset = rowsHeight;
         const epic = lane.id ? issueById(lane.id) : null;
         const epicSchedule = epic ? C.epicScheduleRange(epic.id, state.issues) : null;
-        const epicHeader = `<div class="gantt-row gantt-epic-row"><div class="gantt-row-label gantt-epic-label" data-open="${escape(epic?.id || '')}" data-preview-id="${escape(epic?.id || '')}">${renderSwimlaneHeader(lane, 'gantt-lane-title')}${epic ? ganttAddButton(epic) : ''}</div><div class="gantt-resize-gutter" aria-hidden="true"></div>${epic ? renderTrack(epic, topOffset + 22, epicSchedule, true) : `<div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px"></div>`}</div>`;
+        const epicHeader = `<div class="gantt-row gantt-epic-row" ${epic ? `data-gantt-row-id="${escape(epic.id)}"` : ''}><div class="gantt-row-label gantt-epic-label" data-open="${escape(epic?.id || '')}" data-preview-id="${escape(epic?.id || '')}">${renderSwimlaneHeader(lane, 'gantt-lane-title')}${epic ? ganttAddButton(epic) : ''}</div><div class="gantt-resize-gutter" aria-hidden="true"></div>${epic ? renderTrack(epic, topOffset + 22, epicSchedule, true) : `<div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px"></div>`}</div>`;
         rowsHeight += 45;
         const laneRows = collapsed ? '' : renderRows(lane.items, rowsHeight, lane.id);
         if (!collapsed) rowsHeight += ganttHierarchyRows(lane.items, lane.id).length * 45;
@@ -464,6 +515,8 @@
     const todayOffset = C.dateNumber(today()) - C.dateNumber(start);
     const labelMin = Math.min(180, Math.min(480, Math.max(1, Math.round(window.innerWidth * 0.6)))), labelMax = Math.min(480, Math.max(1, Math.round(window.innerWidth * 0.6)));
     $('#view-content').innerHTML = `<div class="gantt-tools"><div class="left"><button class="button secondary" data-timeline="-1" aria-label="Earlier dates">←</button><button class="button secondary" data-timeline="today">Today</button><button class="button secondary" data-timeline="1" aria-label="Later dates">→</button><input id="timeline-date" type="date" aria-label="Timeline start" value="${start}" min="1900-01-01" max="2200-01-01"></div><div class="right"><span>${shortDate(start)} – ${shortDate(end)} ${end.slice(0, 4)}</span><select id="timeline-zoom" aria-label="Timeline zoom">${options(['weeks', 'days'], state.zoom)}</select></div></div><div class="gantt-viewport"><div class="gantt-grid" style="--label-width:${state.ganttLabelWidth}px"><div class="gantt-header"><div class="gantt-label-head">ISSUE / TIMELINE</div><div class="gantt-resize-gutter gantt-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize Gantt label pane" aria-valuemin="${labelMin}" aria-valuemax="${labelMax}" aria-valuenow="${state.ganttLabelWidth}" title="Drag or use arrow keys to resize"></div><div class="gantt-dates">${Array.from({ length: days }, (_, n) => { const value = C.addDays(start, n), d = new Date(value + 'T12:00:00Z'); return `<div class="gantt-date ${[0, 6].includes(d.getUTCDay()) ? 'weekend' : ''} ${value === today() ? 'today' : ''}" style="width:${dayWidth}px" title="${value}">${d.getUTCDate() === 1 || n === 0 ? d.toLocaleDateString('en', { month: 'short', timeZone: 'UTC' }) : d.toLocaleDateString('en', { weekday: 'narrow', timeZone: 'UTC' })}<strong>${d.getUTCDate()}</strong></div>`; }).join('')}</div></div>${rows}<svg class="timeline-links" width="${width}" height="${rowsHeight}" aria-hidden="true"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10" fill="none" stroke="#CBD5E1"/></marker></defs>${links}</svg>${todayOffset >= 0 && todayOffset < days ? `<div class="today-line" style="left:calc(var(--label-width,260px) + ${todayOffset * dayWidth + dayWidth / 2}px)"></div>` : ''}</div></div><div class="gantt-legend">${C.types.map(type => `<span><i style="background:${typeColors[type]}"></i>${type}</span>`).join('')}<span>┄ Dependency</span><span>Shaded bar = progress</span></div>`;
+    $('#view-content .gantt-tools .right').insertAdjacentHTML('afterbegin', '<button type="button" id="gantt-unparent-drop" class="gantt-unparent-drop" data-gantt-unparent hidden>Drop here to unparent</button>');
+    $('#view-content .gantt-legend').insertAdjacentHTML('beforeend', '<span class="gantt-drag-help">⠿ Drag labels to reorder or change parent</span>');
   }
   function formSnapshot() { return JSON.stringify([...new FormData(form).entries()]); }
   function openIssue(id = '', defaults = {}) {
@@ -636,18 +689,51 @@
     catch (error) { render(); notify(error.message, true); }
   });
   $('#view-content').addEventListener('dragstart', event => {
+    const ganttSource = event.target.closest('[data-gantt-drag-id]');
+    if (state.view === 'gantt' && ganttSource && !state.busy) {
+      const issue = issueById(ganttSource.dataset.ganttDragId); if (!issue) { event.preventDefault(); return; }
+      ganttHierarchyDrag = { id: issue.id }; event.dataTransfer.setData('text/plain', issue.id); event.dataTransfer.setData('application/x-sheetflow-issue', issue.id); event.dataTransfer.effectAllowed = 'move';
+      ganttSource.classList.add('gantt-dragging'); hideGanttCommentPreview();
+      const unparentDrop = $('#gantt-unparent-drop'); if (unparentDrop) unparentDrop.hidden = issue.type === 'Epic';
+      return;
+    }
     const card = event.target.closest('.card'); if (!card || state.busy) { event.preventDefault(); return; }
     draggingId = card.dataset.issue; event.dataTransfer.setData('text/plain', draggingId); event.dataTransfer.effectAllowed = 'move'; card.classList.add('dragging');
   });
-  function clearDragStyle() { $$('.drag-over, .drop-before, .dragging').forEach(el => el.classList.remove('drag-over', 'drop-before', 'dragging')); }
+  function clearDragStyle() { $$('.drag-over, .drop-before, .dragging, .gantt-dragging, .gantt-drop-before, .gantt-drop-after, .gantt-drop-parent, .gantt-drop-invalid, .gantt-drop-unparent').forEach(el => el.classList.remove('drag-over', 'drop-before', 'dragging', 'gantt-dragging', 'gantt-drop-before', 'gantt-drop-after', 'gantt-drop-parent', 'gantt-drop-invalid', 'gantt-drop-unparent')); }
   $('#view-content').addEventListener('dragover', event => {
+    if (state.view === 'gantt' && ganttHierarchyDrag && !state.busy) {
+      const unparentDrop = event.target.closest('[data-gantt-unparent]'), row = event.target.closest('[data-gantt-row-id]');
+      if (!unparentDrop && !row) return;
+      const moving = issueById(ganttHierarchyDrag.id), target = row && issueById(row.dataset.ganttRowId);
+      if (!moving) return;
+      const zone = unparentDrop ? 'unparent' : ganttDropZone(moving, target, row, event.clientY), plan = ganttDropPlan(moving, target, zone, Boolean(unparentDrop));
+      clearDragStyle();
+      if (!plan) { (row || unparentDrop).classList.add('gantt-drop-invalid'); event.dataTransfer.dropEffect = 'none'; return; }
+      event.preventDefault(); event.dataTransfer.dropEffect = 'move';
+      (unparentDrop || row).classList.add(unparentDrop ? 'gantt-drop-unparent' : zone === 'parent' ? 'gantt-drop-parent' : zone === 'before' ? 'gantt-drop-before' : 'gantt-drop-after');
+      return;
+    }
     const column = event.target.closest('.column'); if (!column || !draggingId || state.busy) return;
     event.preventDefault(); event.dataTransfer.dropEffect = 'move';
     $$('.drag-over, .drop-before').forEach(el => el.classList.remove('drag-over', 'drop-before'));
     column.classList.add('drag-over'); const card = event.target.closest('.card'); if (card && card.dataset.issue !== draggingId) card.classList.add('drop-before');
   });
-  $('#view-content').addEventListener('dragend', () => { draggingId = null; clearDragStyle(); });
+  $('#view-content').addEventListener('dragend', () => {
+    if (ganttHierarchyDrag) { suppressClickUntil = Date.now() + 450; ganttHierarchyDrag = null; const unparentDrop = $('#gantt-unparent-drop'); if (unparentDrop) unparentDrop.hidden = true; }
+    draggingId = null; clearDragStyle();
+  });
   $('#view-content').addEventListener('drop', async event => {
+    if (state.view === 'gantt' && ganttHierarchyDrag) {
+      const movingId = ganttHierarchyDrag.id, unparentDrop = event.target.closest('[data-gantt-unparent]'), row = event.target.closest('[data-gantt-row-id]');
+      if (!unparentDrop && !row) return;
+      event.preventDefault();
+      const moving = issueById(movingId), target = row && issueById(row.dataset.ganttRowId), zone = unparentDrop ? 'unparent' : ganttDropZone(moving, target, row, event.clientY);
+      ganttHierarchyDrag = null; clearDragStyle(); const unparentButton = $('#gantt-unparent-drop'); if (unparentButton) unparentButton.hidden = true;
+      suppressClickUntil = Date.now() + 450;
+      await saveGanttHierarchyDrop(movingId, Boolean(unparentDrop), target?.id || '', zone);
+      return;
+    }
     const column = event.target.closest('.column'); if (!column || !draggingId || state.busy) return;
     event.preventDefault(); const id = draggingId, issue = issueById(id); draggingId = null;
     const target = event.target.closest('.card'); clearDragStyle();
