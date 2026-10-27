@@ -2,12 +2,26 @@
 
 A Jira-style project tracker using **Google Sheets as its shared data source**, with an editable sheet view, a drag-and-drop Kanban board, and an interactive Gantt timeline. All three views use the same issues. No Jira account or paid frontend libraries are required.
 
-## Try it locally
+## Project setup
 
-Requires Node.js 18 or newer. There are no npm dependencies to install.
+Requires Node.js 18 or newer. This repository has no npm dependencies to install.
+
+Clone the repository and enter the project directory:
 
 ```sh
-npm run build
+git clone https://github.com/martingrossman/gsheetjira.git
+cd gsheetjira
+```
+
+Run the build and test checks before making changes:
+
+```sh
+npm run check
+```
+
+Start the local browser demo:
+
+```sh
 npm start
 ```
 
@@ -16,6 +30,17 @@ Open **http://127.0.0.1:4173**. On Windows PowerShell with script execution disa
 You can also open `dist/index.html` directly, or upload that single file to an HTTPS static host. The standalone version starts with a clearly labeled sample project and saves changes in that browser's local storage. It does **not** sync to Google Sheets or other users. Browser storage can be cleared by the browser; export CSV to keep a portable copy. Use the Apps Script deployment below for shared storage.
 
 Direct views: `#sheet`, `#kanban`, and `#gantt` (or `?view=sheet`, `?view=kanban`, `?view=gantt`).
+
+Useful commands:
+
+| Command | Purpose |
+| --- | --- |
+| `npm run build` | Validate the JavaScript and generate `CoreScript.html` and `dist/index.html`. |
+| `npm test` | Run the Node test suite. |
+| `npm run check` | Run the build and the full test suite. |
+| `npm start` | Serve the standalone demo at `http://127.0.0.1:4173`. |
+| `clasp show-file-status` | Compare local Apps Script files with the configured script project. |
+| `clasp push` | Upload the Apps Script source files selected by `.claspignore`. |
 
 ## Publish the standalone version on GitHub Pages
 
@@ -40,7 +65,7 @@ clasp show-file-status
 clasp push
 ```
 
-The allowlist in `.claspignore` uploads only `Code.js`, `Core.js`, `CoreScript.html`, `Index.html`, `Styles.html`, `Client.html`, and `appsscript.json`. Tests, build scripts, and `dist/` are excluded.
+The allowlist in `.claspignore` uploads the Apps Script runtime files: `Code.js`, `Core.js`, `CoreScript.html`, `Index.html`, `Styles.html`, `Client.html`, `Schema.js`, `Migrations.js`, `Environment.js`, `Repository.js`, `History.js`, `Authorization.js`, `Settings.js`, `Ordering.js`, `Comments.js`, and `appsscript.json`. Tests, build scripts, `IMPLEMENTATION_PLAN.md`, and `dist/` are excluded.
 
 Alternatively, open a Google Sheet, choose **Extensions → Apps Script**, and add those files manually. Add `Code.js` and `Core.js` as script files; Apps Script may display their extension as `.gs`. Keep all four HTML filenames exactly as shown, including the generated `CoreScript.html`. The project uses the V8 runtime.
 
@@ -79,6 +104,18 @@ After source changes, rebuild, push, then **Deploy → Manage deployments → Ed
 
 The repository now includes a non-destructive schema migration foundation. After pushing the new Apps Script files, run **SheetFlow → Check schema health**, then **SheetFlow → Preview v2 migration**. Resolve every duplicate or invalid legacy row reported by the dry run before choosing **Migrate legacy Issues to v2 tabs**. The migration creates versioned `Tasks`, `Projects and Epics`, `Team`, `Holidays and Availability`, `Settings`, `Change History`, and `_System` tabs, preserves legacy IDs and values, and leaves the original `Issues` tab intact for rollback and comparison.
 
+## How it works
+
+SheetFlow has one shared issue model and two storage adapters:
+
+1. The browser demo loads sample issues into `localStorage`. It is useful for UI development and does not share data with other browsers or Google Sheets.
+2. The Apps Script version calls server functions through `google.script.run`. The server reads and writes the `Issues` sheet, serializes dates, assigns IDs, validates relationships, and uses a script lock plus content versions to detect conflicting edits.
+3. `Core.js` contains the shared model and validation rules. `scripts/build.mjs` copies it into `CoreScript.html` for the browser and bundles the standalone `dist/index.html`.
+4. `Index.html`, `Client.html`, and `Styles.html` provide the web app shell, views, interactions, and responsive styling. Apps Script serves the same client with the Google Sheets adapter enabled.
+5. The three views render the same issue collection: Sheet for direct editing, Kanban for status and epic swimlanes, and Gantt for date scheduling. Filters and issue details are shared across views.
+
+In the Kanban view, each epic is rendered as a horizontal swimlane containing the status columns. Lanes show item totals and completion percentage, can be collapsed, and remember their collapsed state in the browser. Dropping a card into another epic lane updates its parent relationship. Server-side atomic ordering, keyboard lane movement, dependency indicators, and WIP limits are not yet implemented.
+
 ## What you can do
 
 ### Separate development, test, and production targets
@@ -104,7 +141,7 @@ The migration seeds stable task-type settings (`algo`, `data`, `requirements`, a
 The ordering foundation exposes `reorderIssue(id, beforeId, expectedVersion)`. It normalizes the affected status scope to stable rank gaps, checks the moved task revision, and records a reorder history event. The current board still uses its legacy client path; future table, board, and Gantt controls will call this shared operation.
 
 - **Sheet:** edit cells directly, sort columns, and toggle all 21 fields. Click an issue ID to open the full editor. Native Google Sheets remains an editable source of truth.
-- **Kanban:** move cards through Backlog, To Do, In Progress, Review, and Done. Drop on a card to insert before it; drop on a column header or empty area to append. Status is also editable in the issue drawer, including on touch devices.
+- **Kanban:** view status columns grouped into epic swimlanes, collapse lanes, move cards through Backlog, To Do, In Progress, Review, and Done, and drop a card into another epic lane to reparent it. Drop on a card to insert before it; drop on a column header or empty area to append. Status is also editable in the issue drawer, including on touch devices.
 - **Gantt:** drag a bar to shift start and due dates together; resize its right edge to change the due date. Use Today, previous/next windows, a start-date picker, or day/week zoom. Bars display progress, with dashed lines for dependencies. Unscheduled issues stay visible with a link to set dates; issues outside the window show their date range.
 - **Hierarchy:** epics contain stories; tasks and bugs can belong to epics or stories. Standalone issues are allowed. Click an epic in the sidebar to include all its descendants.
 - **Issue editor:** create, edit, or delete issues, with descriptions, assignees, priorities, sprints, labels, estimates, time spent, progress, and dependencies. Deletion is blocked while another issue references the item as a parent or dependency.
@@ -167,16 +204,25 @@ The local browser workflow was also exercised for creation, Kanban dragging, inl
 Source layout:
 
 ```text
-Code.js            Apps Script storage, setup, triggers, and web app
-Core.js            Shared model, validation, dates, CSV, and samples
-CoreScript.html    Generated browser copy of Core.js; do not edit directly
-Index.html         Apps Script page template
-Styles.html        Responsive styles
-Client.html        Views, editor, interactions, and persistence adapters
-scripts/build.mjs  Dependency-free HTML build and syntax validation
-scripts/serve.mjs  Local preview server
-tests/             Model and mocked server tests
-dist/index.html    Self-contained standalone browser demo
+Code.js              Apps Script storage, setup, triggers, and web app entry points
+Core.js              Shared model, validation, dates, CSV, and samples
+CoreScript.html      Generated browser copy of Core.js; do not edit directly
+Index.html           Apps Script page template
+Styles.html          Responsive styles
+Client.html          Views, editor, interactions, and persistence adapters
+Schema.js            Versioned v2 tab and field definitions
+Migrations.js        Schema health checks and legacy migration
+Environment.js       Development/test/production spreadsheet selection
+Repository.js        v2 task and reference storage helpers
+History.js            Change history and idempotency records
+Authorization.js     Actor and role capability checks
+Settings.js           Configurable task types and workflow settings
+Ordering.js           Server-side ordering foundation
+Comments.js           Task comment storage
+scripts/build.mjs    Dependency-free HTML build and syntax validation
+scripts/serve.mjs    Local preview server
+tests/               Model and mocked server tests
+dist/index.html      Self-contained standalone browser demo
 ```
 
 This is a Jira-style tracker; it does not connect to Atlassian Jira. The checked-in manifest preserves the current personal web-app settings (execute as the deploying user, accessible only to that user). Publishing to GitHub or building locally does not update Apps Script; use the deployment steps above to release future changes.
