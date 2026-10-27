@@ -51,7 +51,7 @@ function getProject() {
   return withLock_(function () {
     authorizationService_().require('read');
     var book = getBook_();
-    return { issues: readIssues_(book), spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() };
+    return { issues: readIssues_(book), settings: typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [], spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() };
   });
 }
 /** expectedVersion prevents an old browser tab overwriting a newer row. */
@@ -76,6 +76,7 @@ function saveIssue(input, expectedVersion) {
     sheet.getRange(row, 1, 1, TrackerCore.fields.length).setValues([toRow_(issue, book)]);
     SpreadsheetApp.flush();
     var saved = readIssues_(book).find(function (i) { return i.id === issue.id; });
+    if (typeof SheetFlowSettings !== 'undefined') SheetFlowSettings.setTaskType(book, saved.id, issue.taskTypeId);
     history.record(book, { operationId: operationId, entityId: saved.id, eventKind: current ? 'updated' : 'created', beforeRevision: current && current.version, afterRevision: saved.version, changedFields: TrackerCore.fields.filter(function (field) { return !current || current[field.key] !== saved[field.key]; }).map(function (field) { return field.key; }), details: { source: 'app' } });
     history.receipt(book, operationId, saved);
     return saved;
@@ -172,6 +173,7 @@ function readIssues_(book) {
   var sheet = book.getSheetByName('Issues');
   if (sheet.getLastRow() < 2) return [];
   var seen = {};
+  var taskTypes = typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.taskTypeMap(book) : {};
   return sheet.getRange(2, 1, sheet.getLastRow() - 1, TrackerCore.fields.length).getValues().map(function (row, index) {
     if (row.every(function (v) { return v === ''; })) return null;
     if (!row[0] || !row[3]) throw new Error('Row ' + (index + 2) + ' needs an ID and Summary. Edit the Summary cell in Sheets to generate an ID.');
@@ -185,6 +187,7 @@ function readIssues_(book) {
     if (seen[issue.id]) throw new Error('Duplicate ID ' + issue.id + ' in Issues. Each ID must be unique.');
     seen[issue.id] = true;
     if (TrackerCore.statuses.indexOf(issue.status) < 0 || TrackerCore.types.indexOf(issue.type) < 0) throw new Error('Row ' + (index + 2) + ' has an invalid Type or Status. Correct it in Sheets.');
+    issue.taskTypeId = taskTypes[issue.id] || 'algo';
     issue.version = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(issue)));
     issue._row = index + 2;
     return issue;
