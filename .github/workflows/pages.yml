@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - review_against_POR
-        - implement_plan
+      - implement_plan
   workflow_dispatch:
 
 permissions:
