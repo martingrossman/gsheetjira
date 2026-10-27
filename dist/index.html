@@ -95,7 +95,7 @@ var TrackerCore = (function () {
   function split(value) { return String(value || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean); }
   function blank() {
     var issue = {}; fields.forEach(function (f) { issue[f.key] = f.kind === 'number' ? 0 : ''; });
-    return Object.assign(issue, { type: 'Task', status: 'Backlog', priority: 'Medium', rank: Date.now() });
+    return Object.assign(issue, { type: 'Task', taskTypeId: 'algo', status: 'Backlog', priority: 'Medium', rank: Date.now() });
   }
   function prepare(input, current, today, now) {
     var issue = Object.assign(blank(), current || {});
@@ -103,6 +103,7 @@ var TrackerCore = (function () {
       if (['id', 'createdAt', 'updatedAt', 'completedDate'].indexOf(f.key) >= 0) return;
       if (Object.prototype.hasOwnProperty.call(input, f.key)) issue[f.key] = f.kind === 'number' ? Number(input[f.key]) : String(input[f.key] == null ? '' : input[f.key]).trim();
     });
+    if (Object.prototype.hasOwnProperty.call(input, 'taskTypeId')) issue.taskTypeId = String(input.taskTypeId || 'algo').trim().toLowerCase();
     issue.id = current ? current.id : '';
     issue.createdAt = current ? current.createdAt : now;
     issue.updatedAt = now;
@@ -118,6 +119,7 @@ var TrackerCore = (function () {
     if (!types.includes(issue.type)) throw new Error('Select a valid issue type.');
     if (!statuses.includes(issue.status)) throw new Error('Select a valid status.');
     if (!priorities.includes(issue.priority)) throw new Error('Select a valid priority.');
+    if (!/^[a-z0-9][a-z0-9_-]{1,50}$/.test(String(issue.taskTypeId || ''))) throw new Error('Select a valid task type.');
     fields.forEach(function (f) {
       var value = issue[f.key];
       if (f.kind === 'number' && (!Number.isFinite(value) || value < 0)) throw new Error(f.label + ' must be a nonnegative number.');
@@ -399,7 +401,8 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const prioritySymbol = ['Highest', 'High'].includes(issue.priority) ? '↑' : ['Low', 'Lowest'].includes(issue.priority) ? '↓' : '−';
     const priorityClass = C.priorities.includes(issue.priority) ? issue.priority.toLowerCase() : '';
     const parent = issueById(issue.parentId);
-    return `<article class="card" draggable="true" tabindex="0" role="button" data-issue="${escape(issue.id)}" aria-label="${escape(issue.id + ': ' + issue.summary)}"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels">${C.split(issue.labels).slice(0, 3).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${issue.dueDate && issue.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${issue.dueDate ? escape(shortDate(issue.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}</div></article>`;
+    const activity = { algo: 'Algo', data: 'Data', requirements: 'Requirements', bug: 'Bug' }[issue.taskTypeId] || issue.taskTypeId || 'General';
+    return `<article class="card" draggable="true" tabindex="0" role="button" data-issue="${escape(issue.id)}" aria-label="${escape(issue.id + ': ' + issue.summary)}"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels"><span class="label-tag activity-tag">${escape(activity)}</span>${C.split(issue.labels).slice(0, 2).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${issue.dueDate && issue.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${issue.dueDate ? escape(shortDate(issue.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}</div></article>`;
   }
   function renderBoard(issues) {
     $('#view-content').innerHTML = `<div class="board">${C.statuses.map((status, index) => {

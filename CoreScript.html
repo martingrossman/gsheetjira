@@ -24,7 +24,7 @@ var TrackerCore = (function () {
   function split(value) { return String(value || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean); }
   function blank() {
     var issue = {}; fields.forEach(function (f) { issue[f.key] = f.kind === 'number' ? 0 : ''; });
-    return Object.assign(issue, { type: 'Task', status: 'Backlog', priority: 'Medium', rank: Date.now() });
+    return Object.assign(issue, { type: 'Task', taskTypeId: 'algo', status: 'Backlog', priority: 'Medium', rank: Date.now() });
   }
   function prepare(input, current, today, now) {
     var issue = Object.assign(blank(), current || {});
@@ -32,6 +32,7 @@ var TrackerCore = (function () {
       if (['id', 'createdAt', 'updatedAt', 'completedDate'].indexOf(f.key) >= 0) return;
       if (Object.prototype.hasOwnProperty.call(input, f.key)) issue[f.key] = f.kind === 'number' ? Number(input[f.key]) : String(input[f.key] == null ? '' : input[f.key]).trim();
     });
+    if (Object.prototype.hasOwnProperty.call(input, 'taskTypeId')) issue.taskTypeId = String(input.taskTypeId || 'algo').trim().toLowerCase();
     issue.id = current ? current.id : '';
     issue.createdAt = current ? current.createdAt : now;
     issue.updatedAt = now;
@@ -47,6 +48,7 @@ var TrackerCore = (function () {
     if (!types.includes(issue.type)) throw new Error('Select a valid issue type.');
     if (!statuses.includes(issue.status)) throw new Error('Select a valid status.');
     if (!priorities.includes(issue.priority)) throw new Error('Select a valid priority.');
+    if (!/^[a-z0-9][a-z0-9_-]{1,50}$/.test(String(issue.taskTypeId || ''))) throw new Error('Select a valid task type.');
     fields.forEach(function (f) {
       var value = issue[f.key];
       if (f.kind === 'number' && (!Number.isFinite(value) || value < 0)) throw new Error(f.label + ' must be a nonnegative number.');
