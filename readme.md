@@ -17,6 +17,16 @@ You can also open `dist/index.html` directly, or upload that single file to an H
 
 Direct views: `#sheet`, `#kanban`, and `#gantt` (or `?view=sheet`, `?view=kanban`, `?view=gantt`).
 
+## Publish the standalone version on GitHub Pages
+
+This repository includes a GitHub Actions workflow at `.github/workflows/pages.yml`. Push to `main`, then open **Settings → Pages** and choose **GitHub Actions** as the source if GitHub asks you to configure Pages. The workflow builds `dist/index.html` and publishes it at:
+
+```text
+https://martingrossman.github.io/gsheetjira/
+```
+
+GitHub Pages is the portable browser demo: it stores changes in that browser's local storage. It cannot call `google.script.run`, so it does not share data with the Google Sheet. Use the Apps Script web-app URL below when you need shared Google Sheets storage; both versions use the same project model and views.
+
 ## Deploy the shared Google Sheets version
 
 ### 1. Upload the Apps Script files
