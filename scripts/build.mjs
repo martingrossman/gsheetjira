@@ -13,6 +13,7 @@ new vm.Script(await read('Environment.js'), { filename: 'Environment.js' });
 new vm.Script(await read('Repository.js'), { filename: 'Repository.js' });
 new vm.Script(await read('History.js'), { filename: 'History.js' });
 new vm.Script(await read('Authorization.js'), { filename: 'Authorization.js' });
+new vm.Script(await read('Settings.js'), { filename: 'Settings.js' });
 const browserCore = `<script>\n${core}\n</script>\n`;
 await writeFile(path.join(root, 'CoreScript.html'), browserCore);
 let html = await read('Index.html');

@@ -99,6 +99,8 @@ The v2 tabs also provide an append-only **Change History** log and `_System` ide
 
 The server now exposes `getTrackerActor`, `configureTrackerRole(email, role)`, and `setTrackerAuthorizationEnforced(true|false)`. Roles are `administrator`, `editor`, `viewer`, and `agent`; writes require editor/agent/admin, configuration requires admin, and acceptance is admin-only. Enforcement is disabled by default to preserve the existing owner-only deployment. Configure roles and verify the active identity in the test deployment before enabling it for shared access.
 
+The migration seeds stable task-type settings (`algo`, `data`, `requirements`, and `bug`) plus default workflow values. Read them with `getTrackerSettings()` and update an existing setting with the administrator-only `updateTrackerSetting(id, value, active)` function. Type associations use stable IDs so labels can be renamed without rewriting task history.
+
 - **Sheet:** edit cells directly, sort columns, and toggle all 21 fields. Click an issue ID to open the full editor. Native Google Sheets remains an editable source of truth.
 - **Kanban:** move cards through Backlog, To Do, In Progress, Review, and Done. Drop on a card to insert before it; drop on a column header or empty area to append. Status is also editable in the issue drawer, including on touch devices.
 - **Gantt:** drag a bar to shift start and due dates together; resize its right edge to change the due date. Use Today, previous/next windows, a start-date picker, or day/week zoom. Bars display progress, with dashed lines for dependencies. Unscheduled issues stay visible with a link to set dates; issues outside the window show their date range.

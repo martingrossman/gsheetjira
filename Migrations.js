@@ -15,6 +15,7 @@ function ensureSchemaTabs_(book) {
   var systemRows = system.getLastRow() > 1 ? system.getRange(2, 1, system.getLastRow() - 1, 2).getValues() : [];
   var hasVersion = systemRows.some(function (row) { return row[0] === 'SCHEMA_VERSION'; });
   if (!hasVersion) system.getRange(system.getLastRow() + 1, 1, 1, 3).setValues([['SCHEMA_VERSION', SheetFlowSchema.version, new Date()]]);
+  if (typeof SheetFlowSettings !== 'undefined') SheetFlowSettings.ensure(book);
   return SheetFlowSchema.report(book);
 }
 
