@@ -40,7 +40,7 @@
   const uiStorageKey = 'sheetflow.ui.v1';
   const noEpicLaneKey = '__no_epic__';
   const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], collapsedEpics: {}, swimlanes: true, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
-  let edited = null, initialForm = '', draggingId = null, timelineDrag = null, suppressClickUntil = 0, toastTimer;
+  let edited = null, initialForm = '', draggingId = null, timelineDrag = null, suppressClickUntil = 0, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.swimlanes = ui.swimlanes !== false; } catch (ignore) { state.collapsedEpics = {}; }
@@ -184,6 +184,23 @@
     finally { if (!state.busy && state.quickQueue.length) { const next = state.quickQueue.shift(); input.value = next.title; input.dataset.quickKind = next.kind; input.dataset.quickParentId = next.parentId || ''; createQuickTask(next.status, input); } }
   }
   function issueById(id) { return state.issues.find(i => i.id === id); }
+  function effectiveDates(issue) {
+    if (!issue || issue.type !== 'Epic') return issue || {};
+    return C.epicScheduleRange(issue.id, state.issues) || { startDate: '', dueDate: '' };
+  }
+  function updateEpicDateFields() {
+    const isEpic = form.elements.type.value === 'Epic', keys = ['startDate', 'dueDate'];
+    if (isEpic && epicDateFormValues === null) epicDateFormValues = Object.fromEntries(keys.map(key => [key, form.elements[key].value]));
+    const dates = isEpic && edited?.type === 'Epic' ? effectiveDates(edited) : null;
+    keys.forEach(key => {
+      const input = form.elements[key], note = input.closest('.field').querySelector('.derived-date-note');
+      input.disabled = isEpic;
+      note.hidden = !isEpic;
+      if (isEpic) input.value = dates?.[key] || '';
+      else if (epicDateFormValues !== null) input.value = epicDateFormValues[key];
+    });
+    if (!isEpic) epicDateFormValues = null;
+  }
   function commentPreview(id) { return (state.comments[id] || []).slice(-3).map(comment => comment.body).join('\n'); }
   function renderComments(id) {
     const comments = state.comments[id] || [];
@@ -225,7 +242,7 @@
     if (swimlanesToggle) swimlanesToggle.checked = state.swimlanes;
     const issues = filtered(), done = issues.filter(i => i.status === 'Done').length;
     const progress = issues.length ? Math.round(done / issues.length * 100) : 0;
-    const overdue = issues.filter(i => i.dueDate && i.dueDate < today() && i.status !== 'Done').length;
+    const overdue = issues.filter(i => { const dueDate = effectiveDates(i).dueDate; return dueDate && dueDate < today() && i.status !== 'Done'; }).length;
     $('#stats').innerHTML = [
       ['stack', 'Total issues', issues.length, `${issues.filter(i => i.type === 'Epic').length} epics`, ''],
       ['circle', 'In progress', issues.filter(i => i.status === 'In Progress').length, 'Making moves', ''],
@@ -234,7 +251,7 @@
     ].map(s => `<div class="stat"><div class="stat-label">${icon(s[0])}${s[1]}</div><div class="stat-bottom"><span class="stat-number">${s[2]}</span><span class="stat-note ${s[4]}">${s[3]}</span></div></div>`).join('');
     $('#epic-nav').innerHTML = state.issues.filter(i => i.type === 'Epic').map(i => `<button data-epic="${escape(i.id)}" class="${state.epic === i.id ? 'active' : ''}" title="${escape(i.summary)}"><span class="epic-dot"></span><span class="epic-name">${escape(i.summary)}</span></button>`).join('') || '<span class="nav-caption">No epics yet</span>';
     $('#issue-count').textContent = `${issues.length} of ${state.issues.length} issues`;
-    $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Edit a cell to save. Click an issue ID for the full story.', gantt: 'Drag to reschedule. Resize the right edge to change the due date.' }[state.view];
+    $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Edit a cell to save. Click an issue ID for the full story.', gantt: 'Drag tasks to reschedule. Epic spans follow scheduled child issues.' }[state.view];
     if (!state.issues.length) { $('#view-content').innerHTML = `<div class="empty-state">${icon('stack')}<h2>A fresh start for your next project.</h2><p>Create your first epic, story, task, or bug.</p><button class="button primary" data-new="Backlog">Create your first issue</button></div>`; return; }
     if (!issues.length) { $('#view-content').innerHTML = '<div class="empty-state"><h2>No issues match these filters.</h2><p>Try a different search, or clear the filters to see everything.</p><button class="button secondary" data-clear>Clear filters</button></div>'; return; }
     const content = $('#view-content'), oldScroll = content.querySelector('.board, .table-wrap, .gantt-viewport');
@@ -249,8 +266,9 @@
     const prioritySymbol = ['Highest', 'High'].includes(issue.priority) ? '↑' : ['Low', 'Lowest'].includes(issue.priority) ? '↓' : '−';
     const priorityClass = C.priorities.includes(issue.priority) ? issue.priority.toLowerCase() : '';
     const parent = issueById(issue.parentId);
+    const dates = effectiveDates(issue);
     const activity = { algo: 'Algo', data: 'Data', requirements: 'Requirements', bug: 'Bug' }[issue.taskTypeId] || issue.taskTypeId || 'General';
-    return `<article class="card" draggable="true" tabindex="0" role="button" data-issue="${escape(issue.id)}" aria-label="${escape(issue.id + ': ' + issue.summary)}"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels"><span class="label-tag activity-tag">${escape(activity)}</span>${C.split(issue.labels).slice(0, 2).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${issue.dueDate && issue.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${issue.dueDate ? escape(shortDate(issue.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}</div></article>`;
+    return `<article class="card" draggable="true" tabindex="0" role="button" data-issue="${escape(issue.id)}" aria-label="${escape(issue.id + ': ' + issue.summary)}"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels"><span class="label-tag activity-tag">${escape(activity)}</span>${C.split(issue.labels).slice(0, 2).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${dates.dueDate && dates.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${dates.dueDate ? escape(shortDate(dates.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}</div></article>`;
   }
   function renderBoard(issues) {
     const renderColumns = items => C.statuses.map((status, index) => {
@@ -291,15 +309,17 @@
     const progress = workItems.length ? Math.round(done / workItems.length * 100) : 0;
     const epic = lane.id ? issueById(lane.id) : null;
     const statusIndex = epic ? C.statuses.indexOf(epic.status) : -1;
+    const dates = epic ? effectiveDates(epic) : null;
     const collapsed = laneCollapsed(lane), key = laneCollapsedKey(lane);
-    return `<div class="swimlane-header ${extraClass}"><button type="button" class="swimlane-collapse" data-toggle-lane="${escape(key)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}"><span class="epic-dot"></span>${epic ? `<span class="swimlane-epic-id">${typeIcon('Epic')}${escape(epic.id)}</span>` : ''}<strong>${escape(lane.label)}</strong>${epic ? `<span class="status-badge" style="--status-bg:${statusBg[statusIndex] || '#F1F5F9'};--status-color:${statusColors[statusIndex] || '#64748B'}">${escape(epic.status)}</span>` : ''}<span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span><span class="swimlane-toggle" aria-hidden="true">${collapsed ? '+' : '−'}</span></button>${epic ? `<button type="button" class="swimlane-edit" data-open="${escape(epic.id)}" aria-label="Edit epic ${escape(epic.id)}" title="Edit epic">Edit</button>` : ''}</div>`;
+    const range = dates?.startDate && dates?.dueDate ? `<span class="swimlane-dates">${shortDate(dates.startDate)} – ${shortDate(dates.dueDate)}</span>` : '';
+    return `<div class="swimlane-header ${extraClass}"><button type="button" class="swimlane-collapse" data-toggle-lane="${escape(key)}" aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}"><span class="epic-dot"></span>${epic ? `<span class="swimlane-epic-id">${typeIcon('Epic')}${escape(epic.id)}</span>` : ''}<strong>${escape(lane.label)}</strong>${epic ? `<span class="status-badge" style="--status-bg:${statusBg[statusIndex] || '#F1F5F9'};--status-color:${statusColors[statusIndex] || '#64748B'}">${escape(epic.status)}</span>` : ''}${range}<span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span><span class="swimlane-toggle" aria-hidden="true">${collapsed ? '+' : '−'}</span></button>${epic ? `<button type="button" class="swimlane-edit" data-open="${escape(epic.id)}" aria-label="Edit epic ${escape(epic.id)}" title="Edit epic">Edit</button>` : ''}</div>`;
   }
   function renderSheet(issues) {
     const primary = ['id', 'type', 'parentId', 'summary', 'status', 'priority', 'assignee', 'startDate', 'dueDate', 'progress', 'estimate', 'sprint'];
     const columns = C.fields.filter(f => state.allColumns || primary.includes(f.key));
     columns.splice(Math.min(2, columns.length), 0, { key: 'taskTypeId', label: 'Activity Type', kind: 'text' });
     const list = issues.slice().sort((a, b) => {
-      const x = a[state.sort], y = b[state.sort];
+      const x = effectiveDates(a)[state.sort] ?? a[state.sort], y = effectiveDates(b)[state.sort] ?? b[state.sort];
       const order = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
       return order * (state.ascending ? 1 : -1);
     });
@@ -316,6 +336,7 @@
     const key = field.key, value = issue[key];
     if (key === 'taskTypeId') { const labels = { algo: 'Algo', data: 'Data', requirements: 'Requirements', bug: 'Bug' }; return `<span class="label-tag">${escape(labels[value] || value || 'General')}</span>`; }
     if (key === 'id') return `<button class="issue-link" data-open="${escape(issue.id)}">${typeIcon(issue.type)}${escape(value)}</button>`;
+    if (issue.type === 'Epic' && ['startDate', 'dueDate'].includes(key)) { const dates = effectiveDates(issue); return `<span class="cell-readonly" title="Derived from scheduled child issues; edit child dates to change the Epic schedule.">${escape(dates[key] || '—')}</span>`; }
     if (['createdAt', 'updatedAt', 'completedDate', 'rank'].includes(key)) return `<span class="cell-readonly" title="${escape(value)}">${escape(field.kind === 'timestamp' ? timestamp(value) : value || '—')}</span>`;
     const attr = `class="cell-input ${key === 'summary' ? 'cell-summary' : ''}" data-field="${key}" data-id="${escape(issue.id)}" aria-label="${escape(issue.id + ' ' + field.label)}"`;
     if (['type', 'status', 'priority'].includes(key)) return `<select ${attr}>${options({ type: C.types, status: C.statuses, priority: C.priorities }[key], value)}</select>`;
@@ -390,7 +411,7 @@
     if (state.busy || !state.ready) return;
     const original = id ? issueById(id) : null;
     if (id && !original) return;
-    edited = original ? { ...original } : null;
+    edited = original ? { ...original } : null; epicDateFormValues = null;
     const issue = { ...C.blank(), ...(original || defaults) };
     $('#dialog-id').textContent = id || 'NEW ISSUE'; $('#dialog-title').textContent = id ? 'A little more detail.' : 'Make the next move.';
     form.elements.type.innerHTML = options(C.types, issue.type);
@@ -399,6 +420,7 @@
     form.elements.priority.innerHTML = options(C.priorities, issue.priority);
     form.elements.parentId.innerHTML = options(parentsFor(issue), issue.parentId, 'No parent');
     for (const field of C.fields) if (form.elements[field.key]) form.elements[field.key].value = issue[field.key];
+    updateEpicDateFields();
     $('#form-error').hidden = true; $('#delete-issue').hidden = !id;
     $('#issue-metadata').innerHTML = id ? `Created ${escape(timestamp(issue.createdAt))}<br>Updated ${escape(timestamp(issue.updatedAt))}${issue.completedDate ? `<br>Completed ${escape(shortDate(issue.completedDate))}` : ''}` : '';
     const children = state.issues.filter(i => i.parentId === id && id);
@@ -442,7 +464,8 @@
   $('#epic-nav').addEventListener('click', event => { const target = event.target.closest('[data-epic]'); if (target) { state.epic = state.epic === target.dataset.epic ? '' : target.dataset.epic; render(); } });
   $('#export').addEventListener('click', () => {
     if (!state.ready) return;
-    const url = URL.createObjectURL(new Blob([C.csv(filtered())], { type: 'text/csv;charset=utf-8' }));
+    const exportIssues = filtered().map(issue => issue.type === 'Epic' ? { ...issue, ...effectiveDates(issue) } : issue);
+    const url = URL.createObjectURL(new Blob([C.csv(exportIssues)], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a'); a.href = url; a.download = `sheetflow-issues-${today()}.csv`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('#close-dialog').addEventListener('click', closeIssue); $('#cancel-dialog').addEventListener('click', closeIssue);
@@ -451,6 +474,7 @@
   form.elements.type.addEventListener('change', () => {
     const selected = form.elements.parentId.value;
     form.elements.parentId.innerHTML = options(parentsFor({ id: edited?.id, type: form.elements.type.value }), selected, 'No parent');
+    updateEpicDateFields();
   });
   form.elements.status.addEventListener('change', () => { if (form.elements.status.value === 'Done') form.elements.progress.value = 100; else if (edited?.status === 'Done' && form.elements.progress.value === '100') form.elements.progress.value = 0; });
   $('#child-issues').addEventListener('click', event => { const target = event.target.closest('[data-child]'); if (target && closeIssue()) openIssue(target.dataset.child); });

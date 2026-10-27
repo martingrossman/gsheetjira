@@ -66,6 +66,8 @@ Each task must have a permanent, unique ID independent of its row number.
 
 Only the title is required when creating a task. Other fields receive configured defaults.
 
+- Epic Start Date and Due Date are derived from scheduled descendant issues with valid start and due dates: the earliest descendant start and latest descendant due date. They are read-only on Epics and are used consistently in the editor, Sheet, Kanban, Gantt, overdue totals, and CSV export.
+
 ## 4. Fast Task Creation and Editing
 
 - Provide an always-visible quick-add input.

@@ -31,3 +31,14 @@ test('grouped lanes represent epics once and keep epic details and schedule acce
   assert.ok(client.includes('const epicSchedule = epic ? C.epicScheduleRange(epic.id, state.issues) : null;'));
   assert.ok(client.includes('renderTrack(epic, topOffset + 22, epicSchedule, true)'));
 });
+
+test('Epic dates are derived from child schedules throughout the UI', async () => {
+  const [index, client] = await Promise.all([read('Index.html'), read('Client.html')]);
+
+  assert.match(client, /function effectiveDates\(issue\)[\s\S]*?C\.epicScheduleRange/);
+  assert.match(client, /const overdue = issues\.filter\(i => \{ const dueDate = effectiveDates\(i\)\.dueDate/);
+  assert.match(client, /issue\.type === 'Epic' && \['startDate', 'dueDate'\]\.includes\(key\)/);
+  assert.match(client, /input\.disabled = isEpic/);
+  assert.match(client, /const exportIssues = filtered\(\)\.map\(issue => issue\.type === 'Epic'/);
+  assert.match(index, /class="derived-date-note" hidden/);
+});
