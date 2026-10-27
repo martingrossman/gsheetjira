@@ -261,6 +261,8 @@ Inline Kanban quick creation is a required part of this package: each status col
 
 ### WP-07 — Complete Kanban and epic swimlanes
 
+The default Kanban presentation is epic swimlanes: lanes run horizontally across the status columns, include all descendants of the epic, and include a final `No epic` lane for standalone work. The same epic grouping semantics must be reusable by Gantt and dashboard views.
+
 **Dependencies:** WP-03–WP-06. **Requirements:** 6, 6.1, 6.2.
 
 - [ ] Add No grouping / Epic / Assignee / Project selectors with aligned status columns, collapsible groups and an explicit No epic lane.
