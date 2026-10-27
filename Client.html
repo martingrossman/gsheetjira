@@ -36,9 +36,24 @@
   }
   const isCloud = !!(window.google && google.script && google.script.run);
   const storageKey = 'sheetflow.project.v1';
-  const state = { issues: [], ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const draftStorageKey = 'sheetflow.pending-drafts.v1';
+  const state = { issues: [], drafts: {}, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', draggingId = null, timelineDrag = null, suppressClickUntil = 0, toastTimer;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
+  try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
+  function draftKey(input) { return input?.id || '__new__'; }
+  function saveDraft(input, version) {
+    const key = draftKey(input); if (!key) return;
+    state.drafts[key] = { input: { ...input }, version, savedAt: new Date().toISOString() };
+    localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
+  }
+  function clearDraft(id) {
+    const key = id || '__new__'; if (!state.drafts[key]) return;
+    delete state.drafts[key]; localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
+  }
+  function withDraft(issue) {
+    const draft = issue && state.drafts[issue.id]; return draft ? { ...issue, ...draft.input } : issue;
+  }
   function getLocal() {
     const raw = localStorage.getItem(storageKey);
     if (raw === null) {
@@ -91,14 +106,18 @@
     $('#refresh').disabled = value; $('#create-issue').disabled = value || !state.ready; $('#add-epic').disabled = value || !state.ready;
   }
   function showError(error) {
-    $('#error-banner').textContent = error.message || String(error); $('#error-banner').hidden = false;
+    $('#error-banner').innerHTML = `${escape(error.message || String(error))} <button class="button subtle" id="retry-save" type="button">Retry</button>`; $('#error-banner').hidden = false;
+    $('#retry-save')?.addEventListener('click', async () => {
+      const draft = Object.values(state.drafts)[0]; if (!draft) return;
+      try { await persist(draft.input, draft.version, 'Issue saved'); } catch (ignore) {}
+    });
     syncText('Could not sync', true);
   }
   async function refresh(quiet = false) {
     if (state.busy || timelineDrag) return;
     setBusy(true); if (!quiet) syncText('Loading…');
     try {
-      const project = await rpc('getProject'); state.issues = project.issues; state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
+      const project = await rpc('getProject'); state.issues = project.issues.map(withDraft); state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
       $('#error-banner').hidden = true;
       $('#connection-title').textContent = isCloud ? 'Connected to Google Sheets' : 'Browser demo';
       $('#connection-detail').textContent = isCloud ? 'Shared data. Three ways to work.' : 'Sample data saved on this browser.';
@@ -114,9 +133,15 @@
   }
   async function persist(input, version, message = 'Issue saved') {
     if (state.busy) return null;
+    saveDraft(input, version);
+    if (input.id) {
+      const current = issueById(input.id);
+      if (current) { state.issues = state.issues.map(issue => issue.id === input.id ? { ...issue, ...input } : issue); render(); }
+    }
     setBusy(true); syncText('Saving…');
     try {
       const issue = await rpc('saveIssue', input, version);
+      clearDraft(issue.id);
       state.issues = state.issues.some(i => i.id === issue.id) ? state.issues.map(i => i.id === issue.id ? issue : i) : [...state.issues, issue];
       $('#error-banner').hidden = true; syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); render(); notify(message); return issue;
     } catch (error) { showError(error); throw error; }
