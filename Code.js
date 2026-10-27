@@ -49,6 +49,7 @@ function openTracker() {
 }
 function getProject() {
   return withLock_(function () {
+    authorizationService_().require('read');
     var book = getBook_();
     return { issues: readIssues_(book), spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() };
   });
@@ -56,6 +57,7 @@ function getProject() {
 /** expectedVersion prevents an old browser tab overwriting a newer row. */
 function saveIssue(input, expectedVersion) {
   return withLock_(function () {
+    authorizationService_().require('write');
     var book = getBook_();
     var operationId = input && input.operationId;
     var history = historyService_();
@@ -81,6 +83,7 @@ function saveIssue(input, expectedVersion) {
 }
 function deleteIssue(id, expectedVersion) {
   return withLock_(function () {
+    authorizationService_().require('write');
     var book = getBook_();
     var issues = readIssues_(book);
     var issue = issues.find(function (i) { return i.id === id; });
@@ -96,6 +99,7 @@ function deleteIssue(id, expectedVersion) {
 }
 function loadSampleData() {
   return withLock_(function () {
+    authorizationService_().require('configure');
     var book = getBook_();
     var sheet = book.getSheetByName('Issues');
     if (sheet.getLastRow() > 1) throw new Error('Sample data can only be added to an empty Issues sheet.');
@@ -155,6 +159,10 @@ function environmentSpreadsheetId_() {
 function historyService_() {
   if (typeof SheetFlowHistory !== 'undefined') return SheetFlowHistory;
   return { findReceipt: function () { return null; }, record: function () {}, receipt: function () {} };
+}
+function authorizationService_() {
+  if (typeof SheetFlowAuth !== 'undefined') return SheetFlowAuth;
+  return { require: function () { return { id: 'test', role: 'administrator' }; } };
 }
 function assertHeaders_(sheet) {
   var actual = sheet.getRange(1, 1, 1, TrackerCore.fields.length).getValues()[0];
