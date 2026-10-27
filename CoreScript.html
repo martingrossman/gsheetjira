@@ -48,7 +48,8 @@ var TrackerCore = (function () {
     if (!types.includes(issue.type)) throw new Error('Select a valid issue type.');
     if (!statuses.includes(issue.status)) throw new Error('Select a valid status.');
     if (!priorities.includes(issue.priority)) throw new Error('Select a valid priority.');
-    if (!/^[a-z0-9][a-z0-9_-]{1,50}$/.test(String(issue.taskTypeId || ''))) throw new Error('Select a valid task type.');
+    issue.taskTypeId = String(issue.taskTypeId || 'algo').trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9_-]{1,50}$/.test(issue.taskTypeId)) throw new Error('Select a valid task type.');
     fields.forEach(function (f) {
       var value = issue[f.key];
       if (f.kind === 'number' && (!Number.isFinite(value) || value < 0)) throw new Error(f.label + ' must be a nonnegative number.');
