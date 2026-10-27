@@ -13,14 +13,15 @@ function onOpen() {
 function setupTracker() {
   return withLock_(function () {
     var properties = PropertiesService.getScriptProperties();
-    var id = SheetFlowEnvironment.spreadsheetId();
+    var id = environmentSpreadsheetId_();
     var book = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
     if (!book) book = SpreadsheetApp.create('SheetFlow — Project tracker');
     var sheet = book.getSheetByName('Issues');
     if (!sheet) sheet = book.insertSheet('Issues');
     if (sheet.getLastRow() > 0) assertHeaders_(sheet);
     properties.setProperty('SPREADSHEET_ID', book.getId());
-    properties.setProperty('SHEETFLOW_SPREADSHEET_ID_' + SheetFlowEnvironment.config().name.toUpperCase(), book.getId());
+    var environment = typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.config().name : 'development';
+    properties.setProperty('SHEETFLOW_SPREADSHEET_ID_' + environment.toUpperCase(), book.getId());
     formatSheet_(sheet);
     var hasEditTrigger = ScriptApp.getProjectTriggers().some(function (trigger) {
       return trigger.getHandlerFunction() === 'handleSheetEdit' && trigger.getTriggerSourceId() === book.getId();
@@ -56,6 +57,10 @@ function getProject() {
 function saveIssue(input, expectedVersion) {
   return withLock_(function () {
     var book = getBook_();
+    var operationId = input && input.operationId;
+    var history = historyService_();
+    var previousReceipt = history.findReceipt(book, operationId);
+    if (previousReceipt) return previousReceipt.result;
     var issues = readIssues_(book);
     var current = input.id ? issues.find(function (i) { return i.id === input.id; }) : null;
     if (input.id && !current) throw new Error('This issue no longer exists. Refresh the project.');
@@ -68,7 +73,10 @@ function saveIssue(input, expectedVersion) {
     ensureRows_(sheet, row);
     sheet.getRange(row, 1, 1, TrackerCore.fields.length).setValues([toRow_(issue, book)]);
     SpreadsheetApp.flush();
-    return readIssues_(book).find(function (i) { return i.id === issue.id; });
+    var saved = readIssues_(book).find(function (i) { return i.id === issue.id; });
+    history.record(book, { operationId: operationId, entityId: saved.id, eventKind: current ? 'updated' : 'created', beforeRevision: current && current.version, afterRevision: saved.version, changedFields: TrackerCore.fields.filter(function (field) { return !current || current[field.key] !== saved[field.key]; }).map(function (field) { return field.key; }), details: { source: 'app' } });
+    history.receipt(book, operationId, saved);
+    return saved;
   });
 }
 function deleteIssue(id, expectedVersion) {
@@ -81,7 +89,9 @@ function deleteIssue(id, expectedVersion) {
     TrackerCore.canDelete(id, issues);
     book.getSheetByName('Issues').deleteRow(issue._row);
     SpreadsheetApp.flush();
-    return { id: id };
+    var result = { id: id, deleted: true };
+    historyService_().record(book, { entityId: id, eventKind: 'archived', beforeRevision: issue.version, changedFields: [], details: { source: 'app', replacement: 'legacy delete' } });
+    return result;
   });
 }
 function loadSampleData() {
@@ -131,13 +141,20 @@ function handleSheetEdit(e) {
   });
 }
 function getBook_() {
-  var id = SheetFlowEnvironment.spreadsheetId();
+  var id = environmentSpreadsheetId_();
   if (!id) throw new Error('Run setupTracker in the Apps Script editor first.');
   var book = SpreadsheetApp.openById(id);
   var sheet = book.getSheetByName('Issues');
   if (!sheet) throw new Error('The Issues sheet is missing. Run setupTracker.');
   assertHeaders_(sheet);
   return book;
+}
+function environmentSpreadsheetId_() {
+  return typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.spreadsheetId() : PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+}
+function historyService_() {
+  if (typeof SheetFlowHistory !== 'undefined') return SheetFlowHistory;
+  return { findReceipt: function () { return null; }, record: function () {}, receipt: function () {} };
 }
 function assertHeaders_(sheet) {
   var actual = sheet.getRange(1, 1, 1, TrackerCore.fields.length).getValues()[0];
