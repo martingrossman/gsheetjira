@@ -152,13 +152,13 @@
     finally { setBusy(false); }
   }
   async function createQuickTask(status = 'Backlog', sourceInput = null) {
-    const input = sourceInput || $('#quick-title'), title = input.value.trim();
+    const input = sourceInput || $('#quick-title'), title = input.value.trim(), kind = input.dataset.quickKind || 'Task';
     if (!title || !state.ready) return;
     input.value = '';
-    if (state.busy) { state.quickQueue.push({ title, status }); syncText('Task queued…'); return; }
-    try { await persist({ summary: title, type: 'Task', taskTypeId: 'algo', status, priority: 'Medium' }, undefined, 'Task added'); }
+    if (state.busy) { state.quickQueue.push({ title, status, kind }); syncText('Work item queued…'); return; }
+    try { await persist({ summary: title, type: kind, taskTypeId: 'algo', status, priority: 'Medium' }, undefined, `${kind} added`); }
     catch (ignore) {}
-    finally { if (!state.busy && state.quickQueue.length) { const next = state.quickQueue.shift(); input.value = next.title; createQuickTask(next.status, input); } }
+    finally { if (!state.busy && state.quickQueue.length) { const next = state.quickQueue.shift(); input.value = next.title; input.dataset.quickKind = next.kind; createQuickTask(next.status, input); } }
   }
   function issueById(id) { return state.issues.find(i => i.id === id); }
   function inEpic(issue) {
@@ -224,7 +224,7 @@
   function renderBoard(issues) {
     $('#view-content').innerHTML = `<div class="board">${C.statuses.map((status, index) => {
       const cards = issues.filter(i => i.status === status);
-      return `<section class="column" data-status="${status}" aria-label="${status}" style="--status-color:${statusColors[index]}"><h2 class="column-header"><span class="status-dot"></span>${status}<span class="column-count">${cards.length}</span><button data-new="${status}" aria-label="Open full task editor for ${status}">+</button></h2><div class="card-list">${cards.map(card).join('') || '<div class="column-empty">A little room for what’s next</div>'}</div><div class="column-quick-add"><input data-quick-title="${status}" maxlength="250" placeholder="Add a task…" aria-label="Add task to ${status}"><button data-quick-add="${status}" aria-label="Add task to ${status}">＋</button></div></section>`;
+      return `<section class="column" data-status="${status}" aria-label="${status}" style="--status-color:${statusColors[index]}"><h2 class="column-header"><span class="status-dot"></span>${status}<span class="column-count">${cards.length}</span><button data-new="${status}" aria-label="Open full task editor for ${status}">+</button></h2><div class="card-list">${cards.map(card).join('') || '<div class="column-empty">A little room for what’s next</div>'}</div><div class="column-quick-add"><select data-quick-kind="${status}" aria-label="New work item kind"><option value="Task">Task</option><option value="Story">Story</option></select><input data-quick-title="${status}" maxlength="250" placeholder="Add a task or story…" aria-label="Add task or story to ${status}"><button data-quick-add="${status}" aria-label="Add task or story to ${status}">＋</button></div></section>`;
     }).join('')}</div>`;
   }
   function renderSheet(issues) {
@@ -355,7 +355,7 @@
     if (state.busy || Date.now() < suppressClickUntil) return;
     const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-timeline], [data-bar]');
     if (!target) return;
-    if (target.hasAttribute('data-quick-add')) createQuickTask(target.dataset.quickAdd, target.parentElement.querySelector('[data-quick-title]'));
+    if (target.hasAttribute('data-quick-add')) { const input = target.parentElement.querySelector('[data-quick-title]'); input.dataset.quickKind = target.parentElement.querySelector('[data-quick-kind]').value; createQuickTask(target.dataset.quickAdd, input); }
     else if (target.hasAttribute('data-new')) openIssue('', { status: target.dataset.new, parentId: state.epic });
     else if (target.hasAttribute('data-clear')) clearFilters();
     else if (target.hasAttribute('data-sort')) { state.ascending = state.sort === target.dataset.sort ? !state.ascending : true; state.sort = target.dataset.sort; render(); }
@@ -364,7 +364,7 @@
       if (C.validDate(next) && next <= '2200-01-01') { state.timelineStart = next; render(); }
     } else openIssue(target.dataset.open || target.dataset.issue || target.dataset.bar);
   });
-  $('#view-content').addEventListener('keydown', event => { if (event.target.matches('.column-quick-add input') && event.key === 'Enter') { event.preventDefault(); createQuickTask(event.target.dataset.quickTitle, event.target); } else if (event.target.matches('.card') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); openIssue(event.target.dataset.issue); } });
+  $('#view-content').addEventListener('keydown', event => { if (event.target.matches('.column-quick-add input') && event.key === 'Enter') { event.preventDefault(); event.target.dataset.quickKind = event.target.parentElement.querySelector('[data-quick-kind]').value; createQuickTask(event.target.dataset.quickTitle, event.target); } else if (event.target.matches('.card') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); openIssue(event.target.dataset.issue); } });
   $('#view-content').addEventListener('change', async event => {
     const target = event.target;
     if (target.id === 'all-columns') { state.allColumns = target.checked; render(); return; }
