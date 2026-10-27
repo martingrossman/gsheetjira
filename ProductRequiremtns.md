@@ -101,7 +101,8 @@ Only the title is required when creating a task. Other fields receive configured
 - Allow configurable visible columns.
 - Search task IDs, titles, and descriptions.
 - Filter by status, assignee, project, epic, task type, priority, tags, and dates.
-- Support sorting and grouping.
+- Support sorting and grouping, including optional grouping by epic.
+- When grouped by epic, show collapsible epic sections with task counts and completion progress.
 - Support saved views.
 - Display subtasks beneath their parent tasks.
 - Highlight blocked, overdue, and unassigned tasks.
@@ -118,20 +119,19 @@ Only the title is required when creating a task. Other fields receive configured
 - Support configurable work-in-progress limits.
 - Keep the board usable with keyboard controls.
 
-### 6.1 Optional Epic Swimlanes
+### 6.1 Optional Epic Swimlanes Across Views
 
-- Allow horizontal swimlanes grouped by epic.
-- Keep status columns aligned across swimlanes.
-- Provide a grouping selector:
-  - No grouping
-  - Group by epic
-  - Group by assignee
-  - Group by project
-- Allow swimlanes to be collapsed and expanded.
-- Place tasks without an epic in a "No epic" swimlane.
-- Dragging between epic swimlanes updates the task's epic.
-- A drag crossing both a column and an epic swimlane updates status and epic together.
-- Show task counts and completion progress for each epic.
+- Provide a shared toggle to group issues by epic in the Sheet, Kanban, and Gantt views.
+- Keep the toggle state when switching between views, and remember it after the app is reopened.
+- Keep epic lane order, issue membership, and collapse state consistent across views.
+- Allow each epic lane and the "No epic" lane to be collapsed and expanded.
+- Keep filtered issues in their epic's lane even when the epic itself is excluded by another active filter.
+- Show task counts and completion progress in each lane header.
+- In Sheet, show each epic as a collapsible table section while preserving sorting and inline editing.
+- In Kanban, keep the status columns aligned across epic lanes.
+- In Gantt, group timeline rows under epic lane headers while keeping one shared date axis.
+- Place issues without an epic in a "No epic" lane.
+- In Kanban, dragging a task between epic lanes updates its epic; crossing a column and lane also updates its status.
 
 ### 6.2 Optional Filters
 
@@ -146,6 +146,8 @@ Only the title is required when creating a task. Other fields receive configured
 ## 7. Gantt Chart
 
 - Display tasks as bars on a timeline.
+- Support optional epic swimlanes with collapsible lane headers.
+- Keep one shared date axis aligned across Gantt lanes.
 - Support day, week, and month zoom.
 - Drag bars horizontally to change start and due dates.
 - Resize bars to change task duration.
@@ -370,6 +372,7 @@ Backlog → Ready → In Progress → Review → Done
   - Inline and bulk editing
   - Kanban moves
   - Vertical task and epic reordering across views, including persistence and filtered lists
+  - Epic swimlanes in Sheet, Kanban, and Gantt, including collapse state across view switches
   - Epic swimlane moves
   - Task-type filtering
   - Badge configuration
@@ -390,7 +393,7 @@ Backlog → Ready → In Progress → Review → Done
 - Task list and task detail panel.
 - Kanban board.
 - Vertical task and epic reordering across boards and lists.
-- Optional epic swimlanes.
+- Optional epic swimlanes across Sheet, Kanban, and Gantt.
 - Configurable task types and colors.
 - Task-type filters.
 - Compact attribute badges.
