@@ -18,6 +18,7 @@
 .epic-nav{grid-template-columns:minmax(0,1fr)}.epic-nav button{max-width:100%;overflow:hidden}
 @media(max-width:520px){.gantt-grid{--label-width:195px}.gantt-legend{flex-wrap:wrap}}
 </style>
+<style>.quick-entry{display:flex;gap:8px;margin:18px 0 4px;padding:10px;background:#f4f6f0;border:1px solid #e4e9de;border-radius:7px}.quick-entry input{flex:1;min-width:0;border:1px solid var(--line);border-radius:5px;padding:0 11px;height:34px;background:#fff;font-size:11px}.quick-entry input:focus{outline:2px solid #d6e4cd;border-color:#8fab82}.quick-entry .button{height:34px;font-size:10px}</style>
 
 </head>
 <body data-initial-view="kanban">
@@ -42,6 +43,7 @@
     <main>
       <div class="page-heading"><div><div class="eyebrow">A LITTLE STRUCTURE. A LOT OF POSSIBILITY.</div><h1>Good work starts here<span>.</span></h1><p>From the big picture to the next small step. Keep it all in flow.</p></div><button id="create-issue" class="button primary"><span data-icon="plus"></span>Create issue</button></div>
       <div class="stats" id="stats" aria-label="Project statistics"></div>
+      <div class="quick-entry" aria-label="Quick create task"><input id="quick-title" type="text" maxlength="250" placeholder="What needs doing? Press Enter to add a task" aria-label="New task title"><button id="quick-add" class="button primary" type="button">Add task</button></div>
       <div class="view-bar"><div class="tabs" role="tablist" aria-label="Project view"><button data-view="sheet" role="tab"><span data-icon="sheet"></span>Sheet</button><button data-view="kanban" role="tab"><span data-icon="board"></span>Kanban</button><button data-view="gantt" role="tab"><span data-icon="timeline"></span>Gantt</button></div><div class="view-actions"><button id="refresh" class="button subtle"><span data-icon="refresh"></span><span>Refresh</span></button><button id="export" class="button subtle"><span data-icon="download"></span><span>Export CSV</span></button></div></div>
       <div class="toolbar"><label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="Search issues…" aria-label="Search issues"><kbd>/</kbd></label><div class="filters"><select id="type-filter" aria-label="Filter by type"><option value="">All types</option></select><select id="assignee-filter" aria-label="Filter by assignee"><option value="">Anyone</option></select><select id="status-filter" aria-label="Filter by status"><option value="">All statuses</option></select><select id="sprint-filter" aria-label="Filter by sprint"><option value="">All sprints</option></select><button id="clear-filters" class="button subtle" hidden>Clear filters</button></div><span id="issue-count" class="issue-count"></span></div>
       <div id="filter-context" class="filter-context" hidden></div>
@@ -219,9 +221,24 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   }
   const isCloud = !!(window.google && google.script && google.script.run);
   const storageKey = 'sheetflow.project.v1';
-  const state = { issues: [], ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const draftStorageKey = 'sheetflow.pending-drafts.v1';
+  const state = { issues: [], drafts: {}, quickQueue: [], ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', draggingId = null, timelineDrag = null, suppressClickUntil = 0, toastTimer;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
+  try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
+  function draftKey(input) { return input?.id || '__new__'; }
+  function saveDraft(input, version) {
+    const key = draftKey(input); if (!key) return;
+    state.drafts[key] = { input: { ...input }, version, savedAt: new Date().toISOString() };
+    localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
+  }
+  function clearDraft(id) {
+    const key = id || '__new__'; if (!state.drafts[key]) return;
+    delete state.drafts[key]; localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
+  }
+  function withDraft(issue) {
+    const draft = issue && state.drafts[issue.id]; return draft ? { ...issue, ...draft.input } : issue;
+  }
   function getLocal() {
     const raw = localStorage.getItem(storageKey);
     if (raw === null) {
@@ -274,14 +291,18 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     $('#refresh').disabled = value; $('#create-issue').disabled = value || !state.ready; $('#add-epic').disabled = value || !state.ready;
   }
   function showError(error) {
-    $('#error-banner').textContent = error.message || String(error); $('#error-banner').hidden = false;
+    $('#error-banner').innerHTML = `${escape(error.message || String(error))} <button class="button subtle" id="retry-save" type="button">Retry</button>`; $('#error-banner').hidden = false;
+    $('#retry-save')?.addEventListener('click', async () => {
+      const draft = Object.values(state.drafts)[0]; if (!draft) return;
+      try { await persist(draft.input, draft.version, 'Issue saved'); } catch (ignore) {}
+    });
     syncText('Could not sync', true);
   }
   async function refresh(quiet = false) {
     if (state.busy || timelineDrag) return;
     setBusy(true); if (!quiet) syncText('Loading…');
     try {
-      const project = await rpc('getProject'); state.issues = project.issues; state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
+      const project = await rpc('getProject'); state.issues = project.issues.map(withDraft); state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
       $('#error-banner').hidden = true;
       $('#connection-title').textContent = isCloud ? 'Connected to Google Sheets' : 'Browser demo';
       $('#connection-detail').textContent = isCloud ? 'Shared data. Three ways to work.' : 'Sample data saved on this browser.';
@@ -297,13 +318,28 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   }
   async function persist(input, version, message = 'Issue saved') {
     if (state.busy) return null;
+    saveDraft(input, version);
+    if (input.id) {
+      const current = issueById(input.id);
+      if (current) { state.issues = state.issues.map(issue => issue.id === input.id ? { ...issue, ...input } : issue); render(); }
+    }
     setBusy(true); syncText('Saving…');
     try {
       const issue = await rpc('saveIssue', input, version);
+      clearDraft(issue.id);
       state.issues = state.issues.some(i => i.id === issue.id) ? state.issues.map(i => i.id === issue.id ? issue : i) : [...state.issues, issue];
       $('#error-banner').hidden = true; syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); render(); notify(message); return issue;
     } catch (error) { showError(error); throw error; }
     finally { setBusy(false); }
+  }
+  async function createQuickTask() {
+    const input = $('#quick-title'), title = input.value.trim();
+    if (!title || !state.ready) return;
+    input.value = '';
+    if (state.busy) { state.quickQueue.push(title); syncText('Task queued…'); return; }
+    try { await persist({ summary: title, type: 'Task', status: 'Backlog', priority: 'Medium' }, undefined, 'Task added'); }
+    catch (ignore) {}
+    finally { if (!state.busy && state.quickQueue.length) { input.value = state.quickQueue.shift(); createQuickTask(); } }
   }
   function issueById(id) { return state.issues.find(i => i.id === id); }
   function inEpic(issue) {
@@ -456,6 +492,8 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $$('[data-view]').forEach(el => el.addEventListener('click', () => setView(el.dataset.view)));
   window.addEventListener('hashchange', () => setView(location.hash.slice(1)));
   $('#create-issue').addEventListener('click', () => openIssue());
+  $('#quick-add').addEventListener('click', createQuickTask);
+  $('#quick-title').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); createQuickTask(); } });
   $('#add-epic').addEventListener('click', () => openIssue('', { type: 'Epic' }));
   $('#refresh').addEventListener('click', () => refresh());
   $('#search').addEventListener('input', event => { state.query = event.target.value; render(); });
