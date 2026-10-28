@@ -25,7 +25,7 @@ This is initially a **personal/small-project planning tool**. It must keep today
 ## 2. MVP scope and priority rules
 
 - **P0 (ship blockers):** working current features, clean design foundation, inline add, compact create, usable detailed editor, direct common-property edit, clear persistence states and draft retention, safe local+Sheets compatibility, baseline tests.
-- **P1 (strong MVP):** robust search/filtering, keyboard/command palette, improved Kanban and Sheet, consistent Gantt shell, practical context persistence and responsiveness, measured performance.
+- **P1 (strong MVP):** robust search/filtering, keyboard/command palette, improved Kanban and Sheet **including required optional Epic swimlanes**, consistent Gantt shell, practical context persistence and responsiveness, measured performance.
 - **P2 (post-MVP polish):** dark mode, advanced density/card configuration, saved views, bulk editing beyond existing capabilities, larger hierarchy/type changes, smart entry.
 
 **Release sequencing is explicit.** A P1 item must not hold back a safe P0 slice. A P2 item is not mandatory for first acceptance. Existing working features in any tier must not regress or be removed.
@@ -88,8 +88,13 @@ Each requirement has an **ID** so Codex can cite it in implementation reports an
 - Change priority/assignee through direct card interactions; keyboard and touch must have alternatives to drag/drop/hover.
 - Inline create is accessible per column; maintain clear insertion indicators and sensible empty states.
 - Keep filtering, card focus and ordering behavior correct when data updates.
+- **Required P1:** Provide `No grouping` / `Group by Epic` for Kanban; aligned status columns in collapsible Epic lanes, a `No Epic` lane, task counts, Epic completion and a per-browser persistent grouping preference.
+- Derive Epic membership using the existing Epic → Story → Task/Bug relationships, without changing the current 21-column schema. Avoid duplicate Epic cards in lanes.
+- Support task creation in an Epic/status lane with legal inherited defaults. Support drag-and-drop and keyboard/touch alternatives for legal moves between statuses and Epic lanes; preserve rank, validation, conflicts and persistence.
+- Protect hierarchy: Story-nested Task/Bug issues must not silently lose their Story parent on a cross-Epic move. Require an explicit explained detach/reparent action or reject safely. Count Done/total **leaf work items** for Epic-wide completion, clearly separating these totals from filtered visible counts.
+- Defer generic grouping by assignee/project, nested swimlanes and lane reordering.
 
-**Accept:** Change status by drag/drop and by a non-drag interaction; change priority without opening full details; refresh and confirm state/order. No duplicate or lost task during reorder failures.
+**Accept:** Change status by drag/drop and by a non-drag interaction; change priority without opening full details; refresh and confirm state/order. No duplicate or lost task during reorder failures. **Epic acceptance:** mode toggle survives reload, collapsed/No Epic lanes work, filtered counts are distinct from overall Epic progress, legal Epic/status moves persist, Story-child moves cannot silently detach and all actions have non-drag alternatives.
 
 ### FR-06 — Sheet view (P0–P1)
 
@@ -166,7 +171,7 @@ Important distinction for later: **hierarchy kind** (epic/story/task/subtask) an
 
 - Do not expose `Ready` or `Blocked` as functional states just because the old requirements mention them; that needs schema/workflow decisions.
 - No agent statuses, agent claims, reviewers, authenticated API or Git integration in the MVP.
-- Do not promise synchronized local↔Sheets data, native offline collaboration, full team capacity, partial-day scheduling, arbitrary custom fields or cross-epic drag semantics unless implemented and tested.
+- Do not promise synchronized local↔Sheets data, native offline collaboration, full team capacity, partial-day scheduling or arbitrary custom fields. **Legal cross-Epic moves are part of MVP**; never silently detach Story children.
 - Existing implemented advanced behavior (drag ordering, Gantt dependencies) remains supported even if the broader feature family is deferred.
 
 ## 6. MVP non-goals
@@ -190,7 +195,8 @@ Use these as end-to-end acceptance anchors (all P0, then relevant P1 scenarios):
 | AT-09 | Move/resize scheduled Gantt item | Expected dates are preserved/persisted; no regression in dependencies. |
 | AT-10 | Local versus Apps Script mode | UI identifies mode honestly; each mode's persistence works as documented. |
 | AT-11 | Keyboard and mobile smoke | Focus, Escape, search, view keys and touch create/edit are usable. |
-| AT-12 | 2,000-task benchmark | Measurements and conditions recorded; regressions investigated and budgets reported honestly. |
+| AT-12 | 2,000-task benchmark | Measurements and conditions recorded for flat and Epic-grouped board; regressions investigated and budgets reported honestly. |
+| AT-13 | Required Epic swimlanes | Persistent flat/Epic toggle; No Epic; collapse; aligned status columns; visible counts and Epic-wide leaf progress; safe, validated Epic/status moves with non-drag alternatives; no silent Story-child reparenting; both runtimes verified. |
 
 ## 8. Success signals
 

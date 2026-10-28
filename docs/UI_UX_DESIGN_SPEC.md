@@ -145,7 +145,23 @@ Collapse secondary sections where practical. Autosave on safe property changes; 
 - Accessible reorder alternative: keyboard Move up/down or menu; no hover-only affordances.
 - Drag: clearly show insertion point and target column; preserve existing rank semantics. Filtering/sorting cannot accidentally rewrite hidden item order; conflicting moves present a recoverable error.
 - Empty columns show useful add affordance. Loading/empty/filter-no-match/errors have distinct states.
-- Keep epic filtering; full swimlanes/WIP limits/grouping builder are **future**, not P0 work.
+- Keep existing Epic filtering. **Epic swimlanes are required for the MVP (P1, Phase 3)**. Generic grouping builders and WIP limits are deferred.
+
+### 6.1 Epic swimlanes — required MVP
+
+**Purpose:** Show progress by Epic while keeping the default flat board simple and fast. The Epic view is an optional presentation of the same tasks, not a new task model.
+
+- **Toggle:** The Board toolbar offers `No grouping` and `Group by Epic`. Remember the selected mode per browser across reloads and view switches. Do not confuse Epic filtering (which narrows results) with Epic grouping (which organizes results).
+- **Layout:** Each Epic gets a horizontal, collapsible lane with status columns aligned across lanes. A compact lane header displays the Epic title, task count, and completion progress. Epic records appear as lane headers, not duplicate task cards.
+- **No Epic:** A separate `No Epic` lane holds issues without an Epic ancestor. Determine ancestry from existing `parentId` relationships; do not add an `epicId` column or migrate the current schema.
+- **Counts and progress:** Distinguish the number of tasks matching active filters from Epic-wide completion. Completion counts **leaf work items** in Done / total leaf work items in an Epic's descendant tree; avoid double counting parent Stories. Handle an Epic with zero leaf tasks gracefully. Show progress even if lane is collapsed.
+- **Collapse:** One click or keyboard action collapses/expands the lane. Persist collapse preferences at least for the session, ideally per browser. Grouping must stay usable with many Epics and on narrow screens.
+- **Contextual add:** `+ Add task` in an Epic/status cell inherits its status and a legal parent Epic. In `No Epic`, new tasks have no parent. Respect current type/parent validation and preserve any failed-entry draft.
+- **Moves:** Support dragging within/across status columns, reordering within a lane, and legal cross-Epic moves. Provide a non-drag menu/keyboard/touch alternative for all such moves. A Story may change its Epic parent. A Task/Bug directly under an Epic may change Epic parent. A Task/Bug nested under a Story **must never silently detach** from its Story: explicitly ask for an explained detach/reparent action or block the move with a clear message. Combined status+Epic moves must be validated and either persisted together or safely recovered; preserve unaffected filtered/hidden ordering.
+- **Feedback:** Highlight legal insertion targets and invalid targets, preserve focus/scroll, and handle pending/failed/conflict states consistently with flat board.
+- **Not MVP:** Group by assignee/project, nested swimlanes, lane-order reordering, new hierarchy schema, configurable grouping engine, WIP automation.
+
+**Acceptance:** Toggle modes and reload; verify aligned columns, No Epic, collapsible lanes, visible vs overall counts/progress, valid contextual add, legal status/Epic moves, safe rejection or confirmation of Story-child cross-Epic moves, non-drag controls and successful persistence in local and Apps Script modes.
 
 ## 7. Sheet view specification
 
@@ -222,7 +238,8 @@ Aim for **WCAG 2.2 AA** on applicable UI. Verify keyboard tab order, visible foc
 5. **Failure state:** Fail an inline Sheet edit and task creation; draft remains available and Retry succeeds without duplicate.
 6. **Cross-view:** Filter Kanban, switch to Sheet and Gantt, confirm consistent issue selection and context.
 7. **Narrow screen:** Create/edit with touch; no controls inaccessible behind sideways overflow.
-8. **2,000 tasks:** Navigation, search, Kanban interactions and Gantt remain measurable and usable.
+8. **2,000 tasks:** Navigation, search, flat and Epic-grouped Kanban interactions and Gantt remain measurable and usable.
+9. **Epic swimlanes:** Flat/Epic toggle, collapse, No Epic, accurate counts and leaf-work progress, safe cross-Epic movement and non-drag equivalents are verified.
 
 ## 14. Reference first slice
 

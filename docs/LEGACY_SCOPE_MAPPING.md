@@ -11,7 +11,7 @@
 | 4.1 Vertical reordering | **Preserve implemented Kanban** | Defer full epic/group and cross-view reorder engine. |
 | 5. Task list | **MVP priority** | Legibility, keyboard editing, quick add; advanced saved views later. |
 | 6. Kanban | **MVP priority** | Cards, movement, direct edits and keyboard/touch alternatives. |
-| 6.1 Swimlanes | **Defer** | Keep current epic filter. No new hierarchy/reorder semantics. |
+| 6.1 Swimlanes | **Required MVP (P1): Epic grouping** | Flat/Epic toggle, collapse, No Epic, counts/progress and safe validated status/Epic moves; no generic grouping or schema migration. |
 | 6.2 Filters | **Keep core; refine UX** | Existing filters across views and clear active-state indicators. |
 | 7. Gantt | **Preserve and polish** | Keep existing drag/resize; defer scheduling engine. |
 | 8. Team/capacity | **Defer** | Existing free-text assignee remains initially. |

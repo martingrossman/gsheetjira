@@ -39,7 +39,7 @@ Possible later features: holiday calendars, leave and part-day availability, con
 ## D. Configurability and richer hierarchy
 
 - Separate task **hierarchy kind** (epic/story/task/subtask) from **work category** (Algo/Data/Requirements/Bug).
-- True recursive subtasks, epic swimlanes, cross-epic moves, independent ordering scopes and configurable workflows/statuses.
+- True recursive subtasks, generic or nested swimlanes, complex Epic-lane reordering, independent ordering scopes and configurable workflows/statuses. **Basic Epic swimlanes and safe legal cross-Epic moves are required MVP P1**; see the new PRD and UX specification.
 - Custom fields (text/number/date/checkbox/select), arbitrary badge sources, user-defined status colors, templates and bulk operations.
 - WIP limits, complex grouping, multi-project structures, saved views and flexible dashboards.
 

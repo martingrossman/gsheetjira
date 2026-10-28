@@ -43,7 +43,7 @@ Use a **new feature branch** from a reviewed base (e.g. `feature/mvp-ux-speed`).
 | 0 | Review and baseline, risk register, tests/measurements, proposed PR slices | User approves scope and approach; **no app code changes** |
 | 1 | Visual system and simplified workspace | Visual snapshots + existing behavior tests pass |
 | 2 | Fast create, editor and save/error states | Repeated-create + failed-save end-to-end tests pass |
-| 3 | Board and Sheet direct editing | Card/cell workflow and keyboard tests pass |
+| 3 | Board, Sheet and required Epic swimlanes (P1) | Card/cell workflows, Epic grouping/moves and keyboard tests pass |
 | 4 | Navigation, command palette, filters and Gantt consistency | Cross-view and keyboard tests pass |
 | 5 | Performance, accessibility, hardening and release | Documented benchmarks + local/Sheets smoke checks |
 
@@ -100,10 +100,11 @@ Small slices (in recommended order):
 - **P3.1 — Kanban card layout:** default title/ID/type/priority/assignee; conditional date and dependency, accessible context menus, consistent spacing and column widths.
 - **P3.2 — Direct edits:** assignee, status and priority from cards with focus/touch alternatives; retain drag/drop and ordering semantics.
 - **P3.3 — Sheet ergonomics:** sticky header/identity column if feasible, legible density, in-cell selects, Tab/Enter focus, and persistent failure state/drafts.
-- **P3.4 — Order and filters:** verify drag reorder across filtered/sorted views against existing rules; accessible Move action. Do not start the large cross-view hierarchy/swimlane reordering project unless separately approved.
-- **P3.5 — Compact/Comfortable:** optional density toggle, accessible on desktop and touch devices.
+- **P3.4 — Order and filters:** verify drag reorder across filtered/sorted views against existing rules; accessible Move action. Defer cross-view *Epic-group reorder engine*; Epic grouping and legal cross-Epic task moves below **are required**.
+- **P3.5 — Required Epic swimlanes:** Add flat/Epic grouping selector with persisted per-browser preference; render aligned status columns in collapsible Epic lanes plus `No Epic`; show filtered task counts separately from overall Done/total leaf-work progress. Resolve ancestry from current `parentId` without schema migration. Support contextual create, status moves, and legal Epic moves with accessible non-drag alternatives. For Story-nested children, require explicitly confirmed detach/reparent or explain why move is invalid. Keep combined status/Epic changes validated, recoverable and conflict-safe. Verify filter/order behavior and local/Apps Script persistence. Defer assignee/project grouping and lane reordering.
+- **P3.6 — Compact/Comfortable:** optional density toggle, accessible on desktop and touch devices.
 
-**Acceptance:** same task edited from board and table produces consistent results; pending updates don't scramble the card list, filter or selection; no regression in existing CSV export, date validation, dependency cycles or deletion guard.
+**Acceptance:** same task edited from board and table produces consistent results; pending updates don't scramble the card list, filter or selection; no regression in existing CSV export, date validation, dependency cycles or deletion guard. Pass PRD AT-13 for Epic grouping and safe cross-Epic moves.
 
 ## 8. Phase 4 — Navigation, command palette and timeline consistency
 
@@ -151,10 +152,11 @@ Create a deterministic fixture with **2,000 tasks** and realistic distributions 
 |---|---|
 | Create | No blank title, correct defaults, no duplicates on retries or double-click |
 | Edits | Inline save failure draft retention, separate pending/success, stale version conflict |
-| Hierarchy | Existing Epic/Story/Task/Bug parent rules and linked deletion constraints |
+| Hierarchy | Existing Epic/Story/Task/Bug parent rules and linked deletion constraints; no implicit detach of Story children |
 | Dependencies | Valid IDs only, no cycles, Gantt dependency display remains correct |
-| Order | Kanban move within/across columns, hidden filtered tasks retain appropriate order |
+| Order | Kanban move within/across columns and Epic lanes; hidden filtered tasks retain appropriate order |
 | Sheet | Native Sheets entry, ID/timestamps trigger behavior, CSV export unaffected |
+| Epic swimlanes | Flat/Epic toggle persists; No Epic, collapse, counts, leaf progress, contextual add, legal cross-Epic moves, non-drag equivalent and 2,000-task responsiveness |
 | Gantt | Drag shifts dates, resize changes end only, unscheduled tasks stay findable |
 | Views | `#sheet`, `#kanban`, `#gantt`, `/` search, `N`, `1`, `2`, `3`, Esc |
 | Local | Sample data, localStorage persistence, static build, Github Pages compatibility |
