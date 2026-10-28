@@ -42,17 +42,67 @@
   const localReceiptStorageKey = 'sheetflow.local-receipts.v1';
   const undoStorageKey = 'sheetflow.undo.v1';
   const uiStorageKey = 'sheetflow.ui.v1';
+  const savedViewsStorageKey = 'sheetflow.saved-views.v1';
   const noEpicLaneKey = '__no_epic__';
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], savedViews: [], activeSavedView: '', collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { state.quickQueue = JSON.parse(localStorage.getItem(quickQueueStorageKey) || '[]') || []; } catch (ignore) { state.quickQueue = []; }
   try { state.bulkDraft = JSON.parse(localStorage.getItem(bulkDraftStorageKey) || 'null'); } catch (ignore) { state.bulkDraft = null; }
   try { state.undoStack = JSON.parse(localStorage.getItem(undoStorageKey) || '[]') || []; } catch (ignore) { state.undoStack = []; }
+  try { const saved = JSON.parse(localStorage.getItem(savedViewsStorageKey) || '[]'); state.savedViews = Array.isArray(saved) ? saved.filter(view => view && view.id && view.name && view.state) : []; } catch (ignore) { state.savedViews = []; }
   try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.collapsedGanttStories = ui.collapsedGanttStories || {}; state.collapsedSheetParents = ui.collapsedSheetParents || {}; state.swimlanes = ui.swimlanes !== false; state.ganttLabelWidth = clampGanttLabelWidth(ui.ganttLabelWidth || 260); } catch (ignore) { state.collapsedEpics = {}; state.collapsedGanttStories = {}; state.collapsedSheetParents = {}; }
   function clampGanttLabelWidth(value) { const max = Math.min(480, Math.max(1, window.innerWidth * 0.6)), min = Math.min(180, max); return Math.round(Math.max(min, Math.min(max, Number(value) || 260))); }
   function saveUiState() { localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, collapsedGanttStories: state.collapsedGanttStories, collapsedSheetParents: state.collapsedSheetParents, swimlanes: state.swimlanes, ganttLabelWidth: state.ganttLabelWidth })); }
+  function saveViewSnapshot() {
+    return { view: state.view, query: state.query, types: state.types.slice(), priority: state.priority, tag: state.tag, startAfter: state.startAfter, dueBefore: state.dueBefore, assignee: state.assignee, status: state.status, sprint: state.sprint, epic: state.epic, sort: state.sort, ascending: state.ascending, allColumns: state.allColumns, swimlanes: state.swimlanes, collapsedEpics: { ...state.collapsedEpics }, collapsedSheetParents: { ...state.collapsedSheetParents }, collapsedGanttStories: { ...state.collapsedGanttStories }, ganttLabelWidth: state.ganttLabelWidth, zoom: state.zoom, timelineStart: state.timelineStart };
+  }
+  function renderSavedViews() {
+    const select = $('#saved-view-select');
+    if (!select) return;
+    select.innerHTML = `<option value="">Saved views…</option>${state.savedViews.map(view => `<option value="${escape(view.id)}">${escape(view.name)}</option>`).join('')}`;
+    select.value = state.activeSavedView;
+    const active = state.savedViews.find(view => view.id === state.activeSavedView);
+    $('#delete-saved-view').hidden = !active;
+    $('#delete-saved-view').title = active ? `Delete ${active.name}` : 'Select a saved view to delete it';
+  }
+  function applySavedView(id) {
+    const saved = state.savedViews.find(view => view.id === id);
+    if (!saved) { state.activeSavedView = ''; renderSavedViews(); return; }
+    const view = saved.state;
+    state.activeSavedView = saved.id;
+    state.view = ['sheet', 'kanban', 'gantt'].includes(view.view) ? view.view : 'kanban';
+    state.query = String(view.query || ''); state.types = Array.isArray(view.types) ? view.types.filter(type => C.types.includes(type)) : [];
+    state.priority = C.priorities.includes(view.priority) ? view.priority : ''; state.tag = String(view.tag || '');
+    state.startAfter = C.validDate(view.startAfter) ? view.startAfter : ''; state.dueBefore = C.validDate(view.dueBefore) ? view.dueBefore : '';
+    state.assignee = String(view.assignee || ''); state.status = C.statuses.includes(view.status) ? view.status : ''; state.sprint = String(view.sprint || ''); state.epic = String(view.epic || '');
+    state.sort = view.sort === 'taskTypeId' || C.fields.some(field => field.key === view.sort) ? view.sort : 'rank'; state.ascending = view.ascending !== false; state.allColumns = Boolean(view.allColumns); state.swimlanes = view.swimlanes !== false;
+    state.collapsedEpics = view.collapsedEpics && typeof view.collapsedEpics === 'object' ? { ...view.collapsedEpics } : {};
+    state.collapsedSheetParents = view.collapsedSheetParents && typeof view.collapsedSheetParents === 'object' ? { ...view.collapsedSheetParents } : {};
+    state.collapsedGanttStories = view.collapsedGanttStories && typeof view.collapsedGanttStories === 'object' ? { ...view.collapsedGanttStories } : {};
+    state.ganttLabelWidth = clampGanttLabelWidth(view.ganttLabelWidth || 260); state.zoom = ['days', 'weeks'].includes(view.zoom) ? view.zoom : 'weeks';
+    state.timelineStart = C.validDate(view.timelineStart) ? view.timelineStart : C.addDays(today(), -7);
+    $('#search').value = state.query; saveUiState(); renderSavedViews();
+    if (location.hash !== '#' + state.view) location.hash = state.view;
+    render();
+  }
+  function openSaveViewDialog() { $('#saved-view-name').value = ''; $('#saved-view-error').hidden = true; $('#saved-view-dialog').showModal(); $('#saved-view-name').focus(); }
+  function saveCurrentView(event) {
+    event.preventDefault();
+    const name = $('#saved-view-name').value.trim(), error = $('#saved-view-error');
+    if (!name || name.length > 60) { error.textContent = 'Enter a name between 1 and 60 characters.'; error.hidden = false; return; }
+    if (state.savedViews.some(view => view.name.toLocaleLowerCase() === name.toLocaleLowerCase())) { error.textContent = 'A saved view already uses that name.'; error.hidden = false; return; }
+    const saved = { id: newOperationId(), name, state: saveViewSnapshot(), createdAt: new Date().toISOString() };
+    state.savedViews.push(saved); state.activeSavedView = saved.id; localStorage.setItem(savedViewsStorageKey, JSON.stringify(state.savedViews));
+    $('#saved-view-dialog').close(); renderSavedViews(); notify('View saved in this browser');
+  }
+  function deleteSavedView() {
+    const saved = state.savedViews.find(view => view.id === state.activeSavedView);
+    if (!saved || !confirm(`Delete saved view “${saved.name}”?`)) return;
+    state.savedViews = state.savedViews.filter(view => view.id !== saved.id); state.activeSavedView = '';
+    localStorage.setItem(savedViewsStorageKey, JSON.stringify(state.savedViews)); renderSavedViews(); notify('Saved view deleted');
+  }
   function saveUndoState() { localStorage.setItem(undoStorageKey, JSON.stringify(state.undoStack.slice(-50))); updateUndoControl(); }
   function updateUndoControl() { const button = $('#undo-last-action'); if (button) { const entry = state.undoStack.at(-1); button.disabled = !entry; button.title = entry ? `Undo last saved change to ${entry.id}` : 'No saved issue changes to undo'; } }
   function undoSnapshot(issue) { return Object.fromEntries([...C.fields.map(field => [field.key, issue[field.key]]), ['taskTypeId', issue.taskTypeId]]); }
@@ -179,6 +229,7 @@
     state.busy = value; document.body.classList.toggle('busy', value);
     $$('#issue-form input, #issue-form select, #issue-form textarea, #issue-form button').forEach(el => el.disabled = value);
     $('#refresh').disabled = value; $('#create-issue').disabled = value || !state.ready; $('#add-epic').disabled = value || !state.ready;
+    $('#saved-view-select').disabled = value || !state.ready; $('#save-view-open').disabled = value || !state.ready; $('#delete-saved-view').disabled = value || !state.ready;
   }
   function hasPendingSaves() { return state.activeSaves > 0 || Object.keys(state.saveQueues).length > 0; }
   function drainQuickQueue() {
@@ -451,6 +502,7 @@
   function render() {
     if (!state.ready) return;
     closeGanttQuickPopover();
+    renderSavedViews();
     renderFilters();
     $$('[data-view]').forEach(el => { const active = el.dataset.view === state.view; el.classList.toggle('active', active); if (el.getAttribute('role') === 'tab') { el.setAttribute('aria-selected', String(active)); el.setAttribute('aria-controls', 'view-content'); } });
     const swimlanesToggle = $('#swimlanes-toggle');
@@ -961,6 +1013,12 @@
     else state[chip.dataset.removeFilter] = '';
     render();
   });
+  $('#saved-view-select').addEventListener('change', event => { if (event.target.value) applySavedView(event.target.value); else { state.activeSavedView = ''; renderSavedViews(); } });
+  $('#save-view-open').addEventListener('click', openSaveViewDialog);
+  $('#delete-saved-view').addEventListener('click', deleteSavedView);
+  $('#saved-view-form').addEventListener('submit', saveCurrentView);
+  $('#saved-view-close').addEventListener('click', () => $('#saved-view-dialog').close());
+  $('#saved-view-cancel').addEventListener('click', () => $('#saved-view-dialog').close());
   $('#clear-filters').addEventListener('click', clearFilters);
   form.addEventListener('input', event => {
     if (!event.target.matches('input[type="text"], input:not([type]), textarea')) return;

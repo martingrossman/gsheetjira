@@ -29,6 +29,8 @@ Open **http://127.0.0.1:4173**. On Windows PowerShell with script execution disa
 
 You can also open `dist/index.html` directly, or upload that single file to an HTTPS static host. The standalone version starts with a clearly labeled sample project and saves changes in that browser's local storage. It does **not** sync to Google Sheets or other users. Browser storage can be cleared by the browser; export CSV to keep a portable copy. Use the Apps Script deployment below for shared storage.
 
+Saved views capture the current filters, view, sort, visible columns, swimlane setting, and collapse state. They are personal to the current browser and do not sync to other users.
+
 Direct views: `#sheet`, `#kanban`, and `#gantt` (or `?view=sheet`, `?view=kanban`, `?view=gantt`).
 
 Useful commands:

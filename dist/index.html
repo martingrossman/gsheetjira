@@ -66,7 +66,8 @@
 .bulk-create-dialog .dialog-footer>span{font-size:10px;color:var(--muted)}
 .sheet-tools{display:flex;justify-content:space-between;align-items:center;gap:10px}.sheet-tool-actions{display:flex;align-items:center;gap:14px}.sheet-tool-actions .button{height:28px;padding:0 9px;font-size:9px}.sheet-tool-actions .button.selected{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}.sheet-id-cell{display:flex;align-items:center;gap:5px;padding-left:calc(var(--sheet-depth,0)*14px);box-sizing:border-box}.sheet-tree-toggle,.sheet-tree-spacer{flex:0 0 16px;width:16px;height:18px}.sheet-tree-toggle{display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line);border-radius:4px;background:var(--surface-muted);color:var(--muted);font-size:11px;line-height:1;cursor:pointer}.sheet-tree-toggle:hover,.sheet-tree-toggle:focus-visible{border-color:var(--primary);background:var(--primary-soft);color:var(--primary);outline:none}.sheet-row-controls{display:inline-flex;align-items:center;gap:1px;flex:0 0 auto}.sheet-row-controls button{width:17px;height:20px;min-width:17px;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--muted);font-size:10px;line-height:1;cursor:pointer}.sheet-row-controls button:hover:not(:disabled),.sheet-row-controls button:focus-visible{border-color:var(--line);background:var(--surface-muted);color:var(--primary);outline:none}.sheet-row-controls button:disabled{opacity:.35;cursor:not-allowed}.sheet-row-grip[draggable=true]{cursor:grab}.sheet-row-grip[draggable=true]:active{cursor:grabbing}.sheet-row-grip[aria-disabled=true]{cursor:not-allowed}.sheet-issue-row.sheet-dragging{opacity:.45}.sheet-issue-row.sheet-drop-before td{box-shadow:inset 0 2px var(--primary)}.sheet-issue-row.sheet-drop-after td{box-shadow:inset 0 -2px var(--primary)}
 .filter-menu{position:relative;flex:0 0 auto}.filter-menu>summary{list-style:none;display:flex;align-items:center;min-width:100px;height:32px;padding:0 25px 0 10px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:10px;color:var(--ink);cursor:pointer;white-space:nowrap}.filter-menu>summary::-webkit-details-marker{display:none}.filter-menu>summary:after{content:'⌄';margin-left:auto;margin-right:-16px;color:var(--muted)}.filter-menu[open]>summary{border-color:var(--primary)}.filter-menu-options{position:absolute;top:calc(100% + 5px);left:0;z-index:25;min-width:150px;padding:8px;display:grid;gap:2px;border:1px solid var(--line);border-radius:6px;background:var(--surface);box-shadow:0 8px 24px #0F172A1A}.filter-option{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;font-size:10px;color:var(--ink);cursor:pointer}.filter-option:hover{background:var(--surface-muted)}.filter-option input{accent-color:var(--primary)}.filters input[type=date]{width:128px;height:32px;padding:0 5px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:9px}.date-filter{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--muted);white-space:nowrap}.active-filter-chips{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:-9px 0 12px}.filter-chip{display:inline-flex;align-items:center;gap:7px;max-width:min(260px,90vw);padding:4px 7px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--muted);font-size:9px}.filter-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.filter-chip b{font-size:12px;line-height:10px;color:var(--muted);font-weight:500}.filter-chip:hover{border-color:var(--primary);color:var(--primary)}
-@media(max-width:520px){.quick-entry #bulk-create-open{padding:0 7px}.bulk-create-body{padding:20px}}
+.saved-view-bar{display:flex;align-items:center;gap:8px;padding:0 0 12px;color:var(--muted);font-size:9px}.saved-view-bar label{display:flex;align-items:center;gap:7px}.saved-view-bar select{height:30px;min-width:160px;max-width:250px;padding:0 8px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:10px}.saved-view-bar .button{height:30px;padding:0 10px;font-size:9px}.saved-view-bar>span{margin-left:auto}.saved-view-dialog{width:480px}.saved-view-body{padding:23px 25px;display:grid;gap:14px;color:var(--muted);font-size:12px}.saved-view-body .field{margin:0;color:var(--ink)}
+@media(max-width:520px){.quick-entry #bulk-create-open{padding:0 7px}.bulk-create-body{padding:20px}.saved-view-bar{flex-wrap:wrap}.saved-view-bar>span{display:none}.saved-view-bar select{max-width:170px;min-width:140px}}
 </style>
 
 </head>
@@ -95,6 +96,7 @@
     <div class="quick-entry" aria-label="Quick create task"><input id="quick-title" type="text" maxlength="250" placeholder="What needs doing? Press Enter to add a task" aria-label="New task title"><button id="quick-add" class="button primary" type="button">Add task</button><button id="bulk-create-open" class="button secondary" type="button">Paste list</button></div>
     <div class="view-bar"><div class="tabs" role="tablist" aria-label="Project view"><button data-view="sheet" role="tab"><span data-icon="sheet"></span>Sheet</button><button data-view="kanban" role="tab"><span data-icon="board"></span>Kanban</button><button data-view="gantt" role="tab"><span data-icon="timeline"></span>Gantt</button></div><div class="view-actions"><label class="button subtle view-toggle" title="Group this view into epic swimlanes"><input id="swimlanes-toggle" type="checkbox" checked> Swimlanes</label><button id="undo-last-action" class="button subtle" type="button" disabled title="Undo the last saved issue change">Undo</button><button id="refresh" class="button subtle"><span data-icon="refresh"></span><span>Refresh</span></button><button id="export" class="button subtle"><span data-icon="download"></span><span>Export CSV</span></button></div></div>
       <div class="toolbar"><label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="Search issues…" aria-label="Search issues"><kbd>/</kbd></label><div class="filters"><details id="type-filter-menu" class="filter-menu"><summary id="type-filter-label" aria-label="Filter by one or more types">All types</summary><div id="type-filter" class="filter-menu-options" role="group" aria-label="Issue types"></div></details><select id="priority-filter" aria-label="Filter by priority"><option value="">All priorities</option></select><select id="tag-filter" aria-label="Filter by tag"><option value="">All tags</option></select><select id="assignee-filter" aria-label="Filter by assignee"><option value="">Anyone</option></select><select id="status-filter" aria-label="Filter by status"><option value="">All statuses</option></select><select id="sprint-filter" aria-label="Filter by sprint"><option value="">All sprints</option></select><label class="date-filter"><span>Start ≥</span><input id="start-date-filter" type="date" aria-label="Start on or after"></label><label class="date-filter"><span>Due ≤</span><input id="due-date-filter" type="date" aria-label="Due on or before"></label><button id="clear-filters" class="button subtle" hidden>Clear filters</button></div><span id="issue-count" class="issue-count"></span></div>
+      <div class="saved-view-bar"><label>Saved view <select id="saved-view-select" aria-label="Load a saved view"><option value="">Saved views…</option></select></label><button type="button" id="save-view-open" class="button secondary">Save current view</button><button type="button" id="delete-saved-view" class="button subtle" aria-label="Delete selected saved view" hidden>Delete view</button><span>Personal to this browser</span></div>
       <div id="active-filter-chips" class="active-filter-chips" hidden></div>
       <div id="filter-context" class="filter-context" hidden></div>
       <div id="error-banner" class="error-banner" role="alert" hidden></div>
@@ -121,6 +123,9 @@
     <div class="dialog-header"><div><span class="eyebrow">QUICK ENTRY</span><h2 id="bulk-create-title">Paste task titles</h2></div><button type="button" id="bulk-create-close" class="icon-button" aria-label="Close paste list">×</button></div>
     <div class="bulk-create-body"><p>Enter one title per line. Blank lines are ignored. New tasks use Backlog and the configured default activity type.</p><label class="field" for="bulk-create-input">Task titles<textarea id="bulk-create-input" rows="10" maxlength="30000" placeholder="Prepare the launch plan&#10;Review the first draft&#10;Share feedback" aria-label="Task titles, one per line"></textarea></label><div id="bulk-create-preview" class="bulk-create-preview" role="status" aria-live="polite">Enter one or more titles.</div><div id="bulk-create-error" class="error-banner" role="alert" hidden></div></div>
     <div class="dialog-footer"><span id="bulk-create-status" role="status" aria-live="polite"></span><div><button type="button" id="bulk-create-cancel" class="button secondary">Cancel</button><button type="button" id="bulk-create-submit" class="button primary" disabled>Create tasks</button></div></div>
+  </dialog>
+  <dialog id="saved-view-dialog" class="help-dialog saved-view-dialog" aria-labelledby="saved-view-title">
+    <form id="saved-view-form"><div class="dialog-header"><div><span class="eyebrow">PERSONAL VIEW</span><h2 id="saved-view-title">Save this view</h2></div><button type="button" id="saved-view-close" class="icon-button" aria-label="Close save view">×</button></div><div class="saved-view-body"><p>Save the current filters, view, sorting, visible columns and collapse state in this browser.</p><label class="field">View name<input id="saved-view-name" required maxlength="60" autocomplete="off" placeholder="e.g. Bugs to review"></label><div id="saved-view-error" class="error-banner" role="alert" hidden></div></div><div class="dialog-footer"><span></span><div><button type="button" id="saved-view-cancel" class="button secondary">Cancel</button><button type="submit" class="button primary">Save view</button></div></div></form>
   </dialog>
   <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title"><div class="dialog-header"><h2 id="help-title">One project. Three perspectives.</h2><button class="icon-button" id="close-help" aria-label="Close help">×</button></div><div class="help-body"><p><strong>Sheet</strong> is your editable issue register. Change cells directly, or open an issue for every detail.</p><p><strong>Kanban</strong> keeps work moving. Drag a card to change its status or reorder it. You can also change status in the issue editor, including on touch devices.</p><p><strong>Gantt</strong> shows your schedule. Drag a bar to move its dates; drag the right edge to change its due date. Open an issue for precise dates and dependencies. Focus a row label and use Alt + ↑/↓ to reorder, Alt + ← to unparent, or Alt + → to nest under the previous eligible sibling.</p><p><strong>Hierarchy:</strong> epics contain stories; tasks and bugs can belong to either. Choose an epic in the sidebar to focus on all its descendants.</p><p id="help-storage"></p><p><strong>Shortcuts:</strong> 1 / 2 / 3 switch views, / searches, N creates an issue, Esc closes an editor.</p><p>CSV export includes all fields for the currently filtered issues.</p></div></dialog>
   <datalist id="people"></datalist><datalist id="sprints"></datalist>
@@ -346,17 +351,67 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   const localReceiptStorageKey = 'sheetflow.local-receipts.v1';
   const undoStorageKey = 'sheetflow.undo.v1';
   const uiStorageKey = 'sheetflow.ui.v1';
+  const savedViewsStorageKey = 'sheetflow.saved-views.v1';
   const noEpicLaneKey = '__no_epic__';
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], savedViews: [], activeSavedView: '', collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { state.quickQueue = JSON.parse(localStorage.getItem(quickQueueStorageKey) || '[]') || []; } catch (ignore) { state.quickQueue = []; }
   try { state.bulkDraft = JSON.parse(localStorage.getItem(bulkDraftStorageKey) || 'null'); } catch (ignore) { state.bulkDraft = null; }
   try { state.undoStack = JSON.parse(localStorage.getItem(undoStorageKey) || '[]') || []; } catch (ignore) { state.undoStack = []; }
+  try { const saved = JSON.parse(localStorage.getItem(savedViewsStorageKey) || '[]'); state.savedViews = Array.isArray(saved) ? saved.filter(view => view && view.id && view.name && view.state) : []; } catch (ignore) { state.savedViews = []; }
   try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.collapsedGanttStories = ui.collapsedGanttStories || {}; state.collapsedSheetParents = ui.collapsedSheetParents || {}; state.swimlanes = ui.swimlanes !== false; state.ganttLabelWidth = clampGanttLabelWidth(ui.ganttLabelWidth || 260); } catch (ignore) { state.collapsedEpics = {}; state.collapsedGanttStories = {}; state.collapsedSheetParents = {}; }
   function clampGanttLabelWidth(value) { const max = Math.min(480, Math.max(1, window.innerWidth * 0.6)), min = Math.min(180, max); return Math.round(Math.max(min, Math.min(max, Number(value) || 260))); }
   function saveUiState() { localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, collapsedGanttStories: state.collapsedGanttStories, collapsedSheetParents: state.collapsedSheetParents, swimlanes: state.swimlanes, ganttLabelWidth: state.ganttLabelWidth })); }
+  function saveViewSnapshot() {
+    return { view: state.view, query: state.query, types: state.types.slice(), priority: state.priority, tag: state.tag, startAfter: state.startAfter, dueBefore: state.dueBefore, assignee: state.assignee, status: state.status, sprint: state.sprint, epic: state.epic, sort: state.sort, ascending: state.ascending, allColumns: state.allColumns, swimlanes: state.swimlanes, collapsedEpics: { ...state.collapsedEpics }, collapsedSheetParents: { ...state.collapsedSheetParents }, collapsedGanttStories: { ...state.collapsedGanttStories }, ganttLabelWidth: state.ganttLabelWidth, zoom: state.zoom, timelineStart: state.timelineStart };
+  }
+  function renderSavedViews() {
+    const select = $('#saved-view-select');
+    if (!select) return;
+    select.innerHTML = `<option value="">Saved views…</option>${state.savedViews.map(view => `<option value="${escape(view.id)}">${escape(view.name)}</option>`).join('')}`;
+    select.value = state.activeSavedView;
+    const active = state.savedViews.find(view => view.id === state.activeSavedView);
+    $('#delete-saved-view').hidden = !active;
+    $('#delete-saved-view').title = active ? `Delete ${active.name}` : 'Select a saved view to delete it';
+  }
+  function applySavedView(id) {
+    const saved = state.savedViews.find(view => view.id === id);
+    if (!saved) { state.activeSavedView = ''; renderSavedViews(); return; }
+    const view = saved.state;
+    state.activeSavedView = saved.id;
+    state.view = ['sheet', 'kanban', 'gantt'].includes(view.view) ? view.view : 'kanban';
+    state.query = String(view.query || ''); state.types = Array.isArray(view.types) ? view.types.filter(type => C.types.includes(type)) : [];
+    state.priority = C.priorities.includes(view.priority) ? view.priority : ''; state.tag = String(view.tag || '');
+    state.startAfter = C.validDate(view.startAfter) ? view.startAfter : ''; state.dueBefore = C.validDate(view.dueBefore) ? view.dueBefore : '';
+    state.assignee = String(view.assignee || ''); state.status = C.statuses.includes(view.status) ? view.status : ''; state.sprint = String(view.sprint || ''); state.epic = String(view.epic || '');
+    state.sort = view.sort === 'taskTypeId' || C.fields.some(field => field.key === view.sort) ? view.sort : 'rank'; state.ascending = view.ascending !== false; state.allColumns = Boolean(view.allColumns); state.swimlanes = view.swimlanes !== false;
+    state.collapsedEpics = view.collapsedEpics && typeof view.collapsedEpics === 'object' ? { ...view.collapsedEpics } : {};
+    state.collapsedSheetParents = view.collapsedSheetParents && typeof view.collapsedSheetParents === 'object' ? { ...view.collapsedSheetParents } : {};
+    state.collapsedGanttStories = view.collapsedGanttStories && typeof view.collapsedGanttStories === 'object' ? { ...view.collapsedGanttStories } : {};
+    state.ganttLabelWidth = clampGanttLabelWidth(view.ganttLabelWidth || 260); state.zoom = ['days', 'weeks'].includes(view.zoom) ? view.zoom : 'weeks';
+    state.timelineStart = C.validDate(view.timelineStart) ? view.timelineStart : C.addDays(today(), -7);
+    $('#search').value = state.query; saveUiState(); renderSavedViews();
+    if (location.hash !== '#' + state.view) location.hash = state.view;
+    render();
+  }
+  function openSaveViewDialog() { $('#saved-view-name').value = ''; $('#saved-view-error').hidden = true; $('#saved-view-dialog').showModal(); $('#saved-view-name').focus(); }
+  function saveCurrentView(event) {
+    event.preventDefault();
+    const name = $('#saved-view-name').value.trim(), error = $('#saved-view-error');
+    if (!name || name.length > 60) { error.textContent = 'Enter a name between 1 and 60 characters.'; error.hidden = false; return; }
+    if (state.savedViews.some(view => view.name.toLocaleLowerCase() === name.toLocaleLowerCase())) { error.textContent = 'A saved view already uses that name.'; error.hidden = false; return; }
+    const saved = { id: newOperationId(), name, state: saveViewSnapshot(), createdAt: new Date().toISOString() };
+    state.savedViews.push(saved); state.activeSavedView = saved.id; localStorage.setItem(savedViewsStorageKey, JSON.stringify(state.savedViews));
+    $('#saved-view-dialog').close(); renderSavedViews(); notify('View saved in this browser');
+  }
+  function deleteSavedView() {
+    const saved = state.savedViews.find(view => view.id === state.activeSavedView);
+    if (!saved || !confirm(`Delete saved view “${saved.name}”?`)) return;
+    state.savedViews = state.savedViews.filter(view => view.id !== saved.id); state.activeSavedView = '';
+    localStorage.setItem(savedViewsStorageKey, JSON.stringify(state.savedViews)); renderSavedViews(); notify('Saved view deleted');
+  }
   function saveUndoState() { localStorage.setItem(undoStorageKey, JSON.stringify(state.undoStack.slice(-50))); updateUndoControl(); }
   function updateUndoControl() { const button = $('#undo-last-action'); if (button) { const entry = state.undoStack.at(-1); button.disabled = !entry; button.title = entry ? `Undo last saved change to ${entry.id}` : 'No saved issue changes to undo'; } }
   function undoSnapshot(issue) { return Object.fromEntries([...C.fields.map(field => [field.key, issue[field.key]]), ['taskTypeId', issue.taskTypeId]]); }
@@ -483,6 +538,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     state.busy = value; document.body.classList.toggle('busy', value);
     $$('#issue-form input, #issue-form select, #issue-form textarea, #issue-form button').forEach(el => el.disabled = value);
     $('#refresh').disabled = value; $('#create-issue').disabled = value || !state.ready; $('#add-epic').disabled = value || !state.ready;
+    $('#saved-view-select').disabled = value || !state.ready; $('#save-view-open').disabled = value || !state.ready; $('#delete-saved-view').disabled = value || !state.ready;
   }
   function hasPendingSaves() { return state.activeSaves > 0 || Object.keys(state.saveQueues).length > 0; }
   function drainQuickQueue() {
@@ -755,6 +811,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   function render() {
     if (!state.ready) return;
     closeGanttQuickPopover();
+    renderSavedViews();
     renderFilters();
     $$('[data-view]').forEach(el => { const active = el.dataset.view === state.view; el.classList.toggle('active', active); if (el.getAttribute('role') === 'tab') { el.setAttribute('aria-selected', String(active)); el.setAttribute('aria-controls', 'view-content'); } });
     const swimlanesToggle = $('#swimlanes-toggle');
@@ -1265,6 +1322,12 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     else state[chip.dataset.removeFilter] = '';
     render();
   });
+  $('#saved-view-select').addEventListener('change', event => { if (event.target.value) applySavedView(event.target.value); else { state.activeSavedView = ''; renderSavedViews(); } });
+  $('#save-view-open').addEventListener('click', openSaveViewDialog);
+  $('#delete-saved-view').addEventListener('click', deleteSavedView);
+  $('#saved-view-form').addEventListener('submit', saveCurrentView);
+  $('#saved-view-close').addEventListener('click', () => $('#saved-view-dialog').close());
+  $('#saved-view-cancel').addEventListener('click', () => $('#saved-view-dialog').close());
   $('#clear-filters').addEventListener('click', clearFilters);
   form.addEventListener('input', event => {
     if (!event.target.matches('input[type="text"], input:not([type]), textarea')) return;
