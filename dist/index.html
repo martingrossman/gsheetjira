@@ -67,6 +67,7 @@
 .sheet-tools{display:flex;justify-content:space-between;align-items:center;gap:10px}.sheet-tool-actions{display:flex;align-items:center;gap:14px}.sheet-tool-actions .button{height:28px;padding:0 9px;font-size:9px}.sheet-tool-actions .button.selected{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}.sheet-id-cell{display:flex;align-items:center;gap:5px;padding-left:calc(var(--sheet-depth,0)*14px);box-sizing:border-box}.sheet-tree-toggle,.sheet-tree-spacer{flex:0 0 16px;width:16px;height:18px}.sheet-tree-toggle{display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line);border-radius:4px;background:var(--surface-muted);color:var(--muted);font-size:11px;line-height:1;cursor:pointer}.sheet-tree-toggle:hover,.sheet-tree-toggle:focus-visible{border-color:var(--primary);background:var(--primary-soft);color:var(--primary);outline:none}.sheet-row-controls{display:inline-flex;align-items:center;gap:1px;flex:0 0 auto}.sheet-row-controls button{width:17px;height:20px;min-width:17px;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--muted);font-size:10px;line-height:1;cursor:pointer}.sheet-row-controls button:hover:not(:disabled),.sheet-row-controls button:focus-visible{border-color:var(--line);background:var(--surface-muted);color:var(--primary);outline:none}.sheet-row-controls button:disabled{opacity:.35;cursor:not-allowed}.sheet-row-grip[draggable=true]{cursor:grab}.sheet-row-grip[draggable=true]:active{cursor:grabbing}.sheet-row-grip[aria-disabled=true]{cursor:not-allowed}.sheet-issue-row.sheet-dragging{opacity:.45}.sheet-issue-row.sheet-drop-before td{box-shadow:inset 0 2px var(--primary)}.sheet-issue-row.sheet-drop-after td{box-shadow:inset 0 -2px var(--primary)}
 .filter-menu{position:relative;flex:0 0 auto}.filter-menu>summary{list-style:none;display:flex;align-items:center;min-width:100px;height:32px;padding:0 25px 0 10px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:10px;color:var(--ink);cursor:pointer;white-space:nowrap}.filter-menu>summary::-webkit-details-marker{display:none}.filter-menu>summary:after{content:'⌄';margin-left:auto;margin-right:-16px;color:var(--muted)}.filter-menu[open]>summary{border-color:var(--primary)}.filter-menu-options{position:absolute;top:calc(100% + 5px);left:0;z-index:25;min-width:150px;padding:8px;display:grid;gap:2px;border:1px solid var(--line);border-radius:6px;background:var(--surface);box-shadow:0 8px 24px #0F172A1A}.filter-option{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;font-size:10px;color:var(--ink);cursor:pointer}.filter-option:hover{background:var(--surface-muted)}.filter-option input{accent-color:var(--primary)}.filters input[type=date]{width:128px;height:32px;padding:0 5px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:9px}.date-filter{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--muted);white-space:nowrap}.active-filter-chips{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:-9px 0 12px}.filter-chip{display:inline-flex;align-items:center;gap:7px;max-width:min(260px,90vw);padding:4px 7px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--muted);font-size:9px}.filter-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.filter-chip b{font-size:12px;line-height:10px;color:var(--muted);font-weight:500}.filter-chip:hover{border-color:var(--primary);color:var(--primary)}
 .saved-view-bar{display:flex;align-items:center;gap:8px;padding:0 0 12px;color:var(--muted);font-size:9px}.saved-view-bar label{display:flex;align-items:center;gap:7px}.saved-view-bar select{height:30px;min-width:160px;max-width:250px;padding:0 8px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:10px}.saved-view-bar .button{height:30px;padding:0 10px;font-size:9px}.saved-view-bar>span{margin-left:auto}.saved-view-dialog{width:480px}.saved-view-body{padding:23px 25px;display:grid;gap:14px;color:var(--muted);font-size:12px}.saved-view-body .field{margin:0;color:var(--ink)}
+.sheet-id-heading{display:flex;align-items:center;gap:7px}.sheet-id-heading input,.sheet-row-select{width:15px;height:15px;margin:0;accent-color:var(--primary);flex:0 0 auto;cursor:pointer}.sheet-id-cell{gap:6px}.sheet-issue-row.selected td{background:var(--primary-soft)}.sheet-issue-row.selected:hover td{background:var(--primary-soft)}.sheet-tools .button.disabled{opacity:.5;cursor:not-allowed}.bulk-edit-dialog{width:520px}.bulk-edit-dialog form{margin:0}.bulk-edit-body{padding:23px 25px;display:grid;gap:14px;color:var(--muted);font-size:12px}.bulk-edit-body p{margin:0;line-height:1.5}.bulk-edit-body .field{margin:0;color:var(--ink)}.bulk-edit-body .field select,.bulk-edit-body .field input{border:1px solid var(--line);border-radius:6px;background:var(--surface);padding:9px 10px;font-size:12px;font-weight:400;width:100%}.bulk-edit-preview{padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface-muted);color:var(--ink);font-size:11px}.bulk-edit-preview.error{border-color:#FECACA;background:#FEF2F2;color:#B91C1C}.bulk-edit-preview ul{margin:6px 0 0;padding-left:18px;max-height:120px;overflow:auto}.bulk-edit-dialog .dialog-footer{padding:15px 25px}.bulk-edit-dialog .dialog-footer #bulk-edit-status{font-size:10px;color:var(--muted)}
 .sheet-columns-menu{position:relative;flex:0 0 auto}.sheet-columns-menu>summary{list-style:none;display:flex;align-items:center;min-width:91px;height:28px;padding:0 8px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:9px;color:var(--muted);cursor:pointer;white-space:nowrap}.sheet-columns-menu>summary::-webkit-details-marker{display:none}.sheet-columns-menu[open]>summary{border-color:var(--primary);color:var(--primary)}.sheet-column-options{position:absolute;top:calc(100% + 5px);right:0;z-index:25;width:240px;max-height:min(360px,65vh);overflow:auto;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);box-shadow:0 8px 24px #0F172A1A}.sheet-column-option{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 5px;border-radius:4px}.sheet-column-option:hover{background:var(--surface-muted)}.sheet-column-option label{display:flex;align-items:center;gap:7px;min-width:0;font-size:9px;color:var(--ink);cursor:pointer}.sheet-column-option label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sheet-column-option input{accent-color:var(--primary)}.sheet-column-option>span{display:flex;gap:2px}.sheet-column-option button{width:19px;height:20px;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--muted);font-size:10px}.sheet-column-option button:hover:not(:disabled),.sheet-column-option button:focus-visible{border-color:var(--line);background:white;color:var(--primary);outline:none}.sheet-column-option button:disabled{opacity:.3;cursor:not-allowed}
 @media(max-width:520px){.quick-entry #bulk-create-open{padding:0 7px}.bulk-create-body{padding:20px}.saved-view-bar{flex-wrap:wrap}.saved-view-bar>span{display:none}.saved-view-bar select{max-width:170px;min-width:140px}}
 </style>
@@ -124,6 +125,13 @@
     <div class="dialog-header"><div><span class="eyebrow">QUICK ENTRY</span><h2 id="bulk-create-title">Paste task titles</h2></div><button type="button" id="bulk-create-close" class="icon-button" aria-label="Close paste list">×</button></div>
     <div class="bulk-create-body"><p>Enter one title per line. Blank lines are ignored. New tasks use Backlog and the configured default activity type.</p><label class="field" for="bulk-create-input">Task titles<textarea id="bulk-create-input" rows="10" maxlength="30000" placeholder="Prepare the launch plan&#10;Review the first draft&#10;Share feedback" aria-label="Task titles, one per line"></textarea></label><div id="bulk-create-preview" class="bulk-create-preview" role="status" aria-live="polite">Enter one or more titles.</div><div id="bulk-create-error" class="error-banner" role="alert" hidden></div></div>
     <div class="dialog-footer"><span id="bulk-create-status" role="status" aria-live="polite"></span><div><button type="button" id="bulk-create-cancel" class="button secondary">Cancel</button><button type="button" id="bulk-create-submit" class="button primary" disabled>Create tasks</button></div></div>
+  </dialog>
+  <dialog id="bulk-edit-dialog" class="help-dialog bulk-edit-dialog" aria-labelledby="bulk-edit-title">
+    <form id="bulk-edit-form">
+      <div class="dialog-header"><div><span class="eyebrow">SHEET SELECTION</span><h2 id="bulk-edit-title">Edit selected issues</h2></div><button type="button" id="bulk-edit-close" class="icon-button" aria-label="Close bulk edit">×</button></div>
+      <div class="bulk-edit-body"><p id="bulk-edit-selection-count">Selected issues will be validated together before any changes are saved.</p><label class="field" for="bulk-edit-field">Field to change<select id="bulk-edit-field" required><option value="">Choose a field…</option><option value="status">Status</option><option value="assignee">Assignee</option><option value="priority">Priority</option><option value="parentId">Epic</option><option value="taskTypeId">Activity type</option><option value="startDate">Start date</option><option value="dueDate">Due date</option></select></label><div id="bulk-edit-value-wrap"></div><div id="bulk-edit-preview" class="bulk-edit-preview" role="status" aria-live="polite">Choose a field to preview the change.</div><div id="bulk-edit-error" class="error-banner" role="alert" hidden></div></div>
+      <div class="dialog-footer"><span id="bulk-edit-status" role="status" aria-live="polite"></span><div><button type="button" id="bulk-edit-cancel" class="button secondary">Cancel</button><button type="button" id="bulk-edit-submit" class="button primary" disabled>Apply to selected</button></div></div>
+    </form>
   </dialog>
   <dialog id="saved-view-dialog" class="help-dialog saved-view-dialog" aria-labelledby="saved-view-title">
     <form id="saved-view-form"><div class="dialog-header"><div><span class="eyebrow">PERSONAL VIEW</span><h2 id="saved-view-title">Save this view</h2></div><button type="button" id="saved-view-close" class="icon-button" aria-label="Close save view">×</button></div><div class="saved-view-body"><p>Save the current filters, view, sorting, visible columns and collapse state in this browser.</p><label class="field">View name<input id="saved-view-name" required maxlength="60" autocomplete="off" placeholder="e.g. Bugs to review"></label><div id="saved-view-error" class="error-banner" role="alert" hidden></div></div><div class="dialog-footer"><span></span><div><button type="button" id="saved-view-cancel" class="button secondary">Cancel</button><button type="submit" class="button primary">Save view</button></div></div></form>
@@ -363,7 +371,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     order.unshift('id');
     return order;
   }
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], savedViews: [], activeSavedView: '', visibleColumns: defaultSheetColumnOrder.slice(), collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], selectedIssueIds: [], bulkEditDraft: null, savedViews: [], activeSavedView: '', visibleColumns: defaultSheetColumnOrder.slice(), collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
@@ -425,7 +433,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     localStorage.setItem(savedViewsStorageKey, JSON.stringify(state.savedViews)); renderSavedViews(); notify('Saved view deleted');
   }
   function saveUndoState() { localStorage.setItem(undoStorageKey, JSON.stringify(state.undoStack.slice(-50))); updateUndoControl(); }
-  function updateUndoControl() { const button = $('#undo-last-action'); if (button) { const entry = state.undoStack.at(-1); button.disabled = !entry; button.title = entry ? `Undo last saved change to ${entry.id}` : 'No saved issue changes to undo'; } }
+  function updateUndoControl() { const button = $('#undo-last-action'); if (button) { const entry = state.undoStack.at(-1); button.disabled = !entry; button.title = entry ? (entry.kind === 'bulk' ? `Undo last bulk change to ${entry.items.length} issues` : `Undo last saved change to ${entry.id}`) : 'No saved issue changes to undo'; } }
   function undoSnapshot(issue) { return Object.fromEntries([...C.fields.map(field => [field.key, issue[field.key]]), ['taskTypeId', issue.taskTypeId]]); }
   function undoBusinessKeys() { return [...C.fields.map(field => field.key), 'taskTypeId'].filter(key => !['id', 'createdAt', 'updatedAt', 'completedDate'].includes(key)); }
   function sameUndoValues(left, right) { return undoBusinessKeys().every(key => String(left?.[key] ?? '') === String(right?.[key] ?? '')); }
@@ -537,6 +545,40 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       }
       return { items: results, errors };
     }
+    if (method === 'updateIssuesBatch') {
+      const db = getLocal(), items = args[0] || [], receipts = JSON.parse(localStorage.getItem(localReceiptStorageKey) || '{}');
+      if (!Array.isArray(items) || !items.length || items.length > 100) throw new Error('Select between 1 and 100 issues for a bulk edit.');
+      const previous = items.map(item => receipts[item.operationId] || null);
+      if (previous.some(Boolean)) {
+        if (previous.every(Boolean)) return { items: previous.map((issue, index) => ({ id: items[index].id, issue })), errors: [], replayed: true };
+        return { items: [], errors: [{ id: '', message: 'A previous bulk operation is only partly recorded. Refresh the project before retrying.' }], rejected: true };
+      }
+      const byId = new Map(db.issues.map(issue => [issue.id, issue])), seen = new Set(), prepared = [], errors = [];
+      items.forEach(item => {
+        try {
+          if (!item || !item.id || seen.has(item.id)) throw new Error('An issue can appear only once in a bulk edit.');
+          seen.add(item.id);
+          const keys = Object.keys(item.updates || {}), supported = ['status', 'assignee', 'priority', 'parentId', 'taskTypeId', 'startDate', 'dueDate'];
+          if (keys.length !== 1 || !supported.includes(keys[0]) || !item.operationId) throw new Error('Choose one supported field for the bulk edit.');
+          if (item.restoreProgress !== undefined && (keys[0] !== 'status' || !Number.isFinite(Number(item.restoreProgress)) || Number(item.restoreProgress) < 0 || Number(item.restoreProgress) > 100)) throw new Error('Invalid progress restoration value.');
+          const current = byId.get(item.id);
+          if (!current) throw new Error('This issue no longer exists. Refresh the project.');
+          if (current.version !== item.expectedVersion) throw new Error('This issue changed elsewhere. Refresh, then apply the bulk edit again.');
+          const issue = C.prepare({ id: current.id, [keys[0]]: item.updates[keys[0]] }, current, today(), new Date().toISOString());
+          if (item.restoreProgress !== undefined) issue.progress = Number(item.restoreProgress);
+          prepared.push({ item, current, issue });
+        } catch (error) { errors.push({ id: item?.id || '', message: error.message || String(error) }); }
+      });
+      if (!errors.length) {
+        const projected = db.issues.map(issue => prepared.find(entry => entry.current.id === issue.id)?.issue || issue);
+        prepared.forEach(entry => { try { C.validate(entry.issue, projected); } catch (error) { errors.push({ id: entry.current.id, message: error.message || String(error) }); } });
+      }
+      if (errors.length) return { items: [], errors, rejected: true };
+      prepared.forEach(entry => { entry.issue.version = crypto.randomUUID(); receipts[entry.item.operationId] = entry.issue; });
+      db.issues = db.issues.map(issue => prepared.find(entry => entry.current.id === issue.id)?.issue || issue);
+      localStorage.setItem(storageKey, JSON.stringify(db)); localStorage.setItem(localReceiptStorageKey, JSON.stringify(receipts));
+      return { items: prepared.map(entry => ({ id: entry.issue.id, issue: entry.issue })), errors: [] };
+    }
     const db = getLocal();
     if (method === 'getProject') return { issues: db.issues, comments: db.comments.reduce((map, comment) => { (map[comment.taskId] ||= []).push(comment); return map; }, {}), settings: [], spreadsheetUrl: '', name: 'Sample project' };
     if (method === 'addTaskComment') {
@@ -635,6 +677,91 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       $('#bulk-create-error').textContent = `${error.message || String(error)} Your batch is saved locally; retry with the same operation IDs.`; $('#bulk-create-error').hidden = false;
       $('#bulk-create-status').textContent = 'Batch saved for retry'; $('#bulk-create-open').textContent = 'Resume batch';
     } finally { state.activeSaves = Math.max(0, state.activeSaves - 1); button.disabled = false; renderBulkPreview(); queueMicrotask(drainQuickQueue); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); }
+  }
+  function bulkEditTargets() { return state.selectedIssueIds.map(issueById).filter(Boolean); }
+  function openBulkEdit() {
+    const selected = bulkEditTargets();
+    if (!selected.length || selected.length > 100) { notify('Bulk edits support between 1 and 100 visible issues.', true); return; }
+    state.bulkEditDraft = null;
+    $('#bulk-edit-field').value = ''; $('#bulk-edit-value-wrap').innerHTML = '';
+    $('#bulk-edit-selection-count').textContent = `${selected.length} visible ${selected.length === 1 ? 'issue is' : 'issues are'} selected. Hidden or collapsed issues are excluded.`;
+    $('#bulk-edit-error').hidden = true; $('#bulk-edit-status').textContent = '';
+    $('#bulk-edit-preview').classList.remove('error'); $('#bulk-edit-preview').textContent = 'Choose a field to preview the change.';
+    $('#bulk-edit-submit').disabled = true; $('#bulk-edit-dialog').showModal(); $('#bulk-edit-field').focus();
+  }
+  function renderBulkEditValue() {
+    const field = $('#bulk-edit-field').value, wrap = $('#bulk-edit-value-wrap');
+    const controls = {
+      status: `<label class="field">New status<select data-bulk-edit-value>${options(C.statuses, '', 'Choose status…')}</select></label>`,
+      assignee: `<label class="field">New assignee<select data-bulk-edit-value>${options([{ value: '', label: 'Unassigned' }, ...[...new Set(state.issues.map(issue => issue.assignee).filter(Boolean))].sort().map(value => ({ value, label: value }))])}</select></label>`,
+      priority: `<label class="field">New priority<select data-bulk-edit-value>${options(C.priorities, '', 'Choose priority…')}</select></label>`,
+      parentId: `<label class="field">Epic<select data-bulk-edit-value>${options([{ value: '', label: 'No epic' }, ...C.sorted(state.issues.filter(issue => issue.type === 'Epic')).map(issue => ({ value: issue.id, label: `${issue.id} · ${issue.summary}` }))])}</select></label>`,
+      taskTypeId: `<label class="field">Activity type<select data-bulk-edit-value>${options(activityTypes(), '', 'Choose activity type…')}</select></label>`,
+      startDate: '<label class="field">New start date<input data-bulk-edit-value type="date"><small>Leave blank to clear the start date.</small></label>',
+      dueDate: '<label class="field">New due date<input data-bulk-edit-value type="date"><small>Leave blank to clear the due date.</small></label>'
+    };
+    wrap.innerHTML = controls[field] || '';
+    renderBulkEditPreview();
+  }
+  function bulkEditPreviewData() {
+    const field = $('#bulk-edit-field').value, control = $('[data-bulk-edit-value]'), selected = bulkEditTargets();
+    if (!field || !control) return { selected, changed: [], errors: [], field, value: undefined };
+    const value = control.value, changed = selected.filter(issue => String(issue[field] ?? '') !== String(value ?? ''));
+    const projected = state.issues.map(issue => {
+      if (!changed.some(target => target.id === issue.id)) return issue;
+      return C.prepare({ id: issue.id, [field]: value }, issue, today(), new Date().toISOString());
+    });
+    const errors = [];
+    if (field === 'startDate' || field === 'dueDate') {
+      if (value && !C.validDate(value)) errors.push({ id: '', message: 'Choose a real date.' });
+    }
+    changed.forEach(issue => {
+      const candidate = projected.find(item => item.id === issue.id);
+      try { C.validate(candidate, projected); } catch (error) { errors.push({ id: issue.id, message: error.message || String(error) }); }
+    });
+    return { selected, changed, errors, field, value };
+  }
+  function renderBulkEditPreview() {
+    const preview = $('#bulk-edit-preview'), submit = $('#bulk-edit-submit');
+    if (!preview || !submit) return;
+    const data = bulkEditPreviewData(), labels = { status: 'status', assignee: 'assignee', priority: 'priority', parentId: 'Epic', taskTypeId: 'activity type', startDate: 'start date', dueDate: 'due date' };
+    preview.classList.toggle('error', data.errors.length > 0);
+    if (data.errors.length) preview.innerHTML = `${data.changed.length} of ${data.selected.length} selected would change, but the batch is invalid:<ul>${data.errors.map(error => `<li>${error.id ? `${escape(error.id)}: ` : ''}${escape(error.message)}</li>`).join('')}</ul>`;
+    else if (!data.field) preview.textContent = 'Choose a field to preview the change.';
+    else preview.textContent = `${data.changed.length} of ${data.selected.length} selected ${labels[data.field]} will change. The batch is validated before saving.`;
+    submit.disabled = state.activeSaves > 0 || !data.field || !data.changed.length || data.errors.length > 0;
+  }
+  async function submitBulkEdit() {
+    const data = bulkEditPreviewData();
+    if (data.errors.length || !data.changed.length || !data.field || state.activeSaves) return;
+    const fingerprint = JSON.stringify({ field: data.field, value: data.value, items: data.changed.map(issue => [issue.id, issue.version]) });
+    if (!state.bulkEditDraft || state.bulkEditDraft.fingerprint !== fingerprint) {
+      const batchId = `bulk-edit-${newOperationId()}`;
+      state.bulkEditDraft = { fingerprint, items: data.changed.map(issue => ({ id: issue.id, expectedVersion: issue.version, operationId: `${batchId}:${issue.id}`, updates: { [data.field]: data.value } })) };
+    }
+    const button = $('#bulk-edit-submit'), draft = state.bulkEditDraft;
+    button.disabled = true; $('#bulk-edit-error').hidden = true; $('#bulk-edit-status').textContent = 'Applying…';
+    state.activeSaves++; syncText('Applying bulk edit…');
+    try {
+      const response = await rpc('updateIssuesBatch', draft.items);
+      if (response.errors?.length) {
+        state.bulkEditDraft = null;
+        $('#bulk-edit-error').innerHTML = `No issues were changed. ${response.errors.map(error => `${error.id ? `${escape(error.id)}: ` : ''}${escape(error.message)}`).join(' ')}`;
+        $('#bulk-edit-error').hidden = false; $('#bulk-edit-status').textContent = 'Batch rejected';
+        return;
+      }
+      const before = new Map(data.changed.map(issue => [issue.id, undoSnapshot(issue)]));
+      const saved = (response.items || []).map(item => item.issue);
+      saved.forEach(issue => { state.issues = state.issues.map(current => current.id === issue.id ? issue : current); });
+      if (saved.length) {
+        state.undoStack.push({ kind: 'bulk', id: `${saved.length} issues`, field: data.field, items: saved.map(issue => ({ id: issue.id, before: before.get(issue.id), after: undoSnapshot(issue), afterVersion: issue.version })) });
+        state.undoStack = state.undoStack.slice(-50); saveUndoState();
+      }
+      state.bulkEditDraft = null; state.selectedIssueIds = [];
+      $('#bulk-edit-dialog').close(); render(); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); notify(`${saved.length} issues updated`);
+    } catch (error) {
+      $('#bulk-edit-error').textContent = `${error.message || String(error)} Retry to safely check the same operation.`; $('#bulk-edit-error').hidden = false; $('#bulk-edit-status').textContent = 'Save status unknown';
+    } finally { state.activeSaves = Math.max(0, state.activeSaves - 1); button.disabled = false; renderBulkEditPreview(); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); }
   }
   function showError(error, draftKeyOverride = '') {
     const failedDraftKey = draftKeyOverride || draftStorageKeyFor(edited?.id);
@@ -763,7 +890,8 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   async function undoLastCommand() {
     const entry = state.undoStack.at(-1);
     if (!entry) return;
-    if (state.busy || hasPendingSaves() || dialog.open || Object.keys(state.drafts).length || state.quickQueue.length || state.bulkDraft) { notify('Finish or discard pending edits before undoing.', true); return; }
+    if (state.busy || hasPendingSaves() || dialog.open || $('#bulk-edit-dialog').open || Object.keys(state.drafts).length || state.quickQueue.length || state.bulkDraft || state.bulkEditDraft) { notify('Finish or discard pending edits before undoing.', true); return; }
+    if (entry.kind === 'bulk') { await undoBulkCommand(entry); return; }
     const current = issueById(entry.id);
     if (!current || current.version !== entry.afterVersion) { notify('This issue changed after the saved action. Refresh before undoing it.', true); return; }
     try {
@@ -774,6 +902,34 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       if (previous) previous.afterVersion = undone.version;
       saveUndoState();
     } catch (error) { notify(`Could not undo: ${error.message}`, true); }
+  }
+  async function undoBulkCommand(entry) {
+    const currents = entry.items.map(item => issueById(item.id));
+    if (currents.some((issue, index) => !issue || issue.version !== entry.items[index].afterVersion)) { notify('One or more issues changed after the bulk edit. Refresh before undoing it.', true); return; }
+    if (!entry.undoItems) {
+      entry.undoItems = entry.items.map((item, index) => ({ id: item.id, expectedVersion: currents[index].version, operationId: `undo-bulk-${newOperationId()}:${item.id}`, updates: { [entry.field]: item.before[entry.field] }, ...(entry.field === 'status' ? { restoreProgress: item.before.progress } : {}) }));
+      saveUndoState();
+    }
+    const items = entry.undoItems;
+    state.activeSaves++; syncText('Undoing bulk edit…'); updateUndoControl();
+    try {
+      const response = await rpc('updateIssuesBatch', items);
+      if (response.errors?.length) { notify(`Could not undo: ${response.errors.map(error => error.message).join(' ')}`, true); return; }
+      const undone = response.items.map(row => row.issue);
+      undone.forEach(issue => { state.issues = state.issues.map(current => current.id === issue.id ? issue : current); });
+      state.undoStack.pop();
+      undone.forEach(issue => {
+        const item = entry.items.find(candidate => candidate.id === issue.id);
+        for (const previous of state.undoStack.slice().reverse()) {
+          if (previous.kind === 'bulk') {
+            const prior = previous.items.find(candidate => candidate.id === issue.id);
+            if (prior && sameUndoValues(prior.after, item.before)) { prior.afterVersion = issue.version; break; }
+          } else if (previous.id === issue.id && sameUndoValues(previous.after, item.before)) { previous.afterVersion = issue.version; break; }
+        }
+      });
+      saveUndoState(); render(); notify(`Bulk change undone for ${undone.length} issues`);
+    } catch (error) { notify(`Could not undo: ${error.message}`, true); }
+    finally { state.activeSaves = Math.max(0, state.activeSaves - 1); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); }
   }
   function issueById(id) { return state.issues.find(i => i.id === id); }
   function effectiveDates(issue) {
@@ -936,11 +1092,11 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   }
   function renderSheet(issues) {
     const definitions = sheetColumnDefinitions(), columns = normalizeSheetColumnOrder(state.visibleColumns).map(key => definitions.get(key)).filter(Boolean);
-    const list = sortSheetItems(issues);
+    const list = sortSheetItems(issues), visibleIds = [];
     const manualOrder = state.sort === 'rank' && state.ascending;
     const renderRow = node => {
-      const issue = node.issue, treeToggle = sheetTreeToggle(node);
-      return `<tr class="sheet-issue-row" data-sheet-row-id="${escape(issue.id)}" data-sheet-depth="${node.depth}" data-sheet-status="${escape(issue.status)}" data-sheet-parent="${escape(issue.parentId || '')}">${columns.map(field => `<td>${field.key === 'id' ? `<div class="sheet-id-cell" style="--sheet-depth:${node.depth}">${treeToggle}${sheetRowControls(issue, list, manualOrder)}${cell(issue, field)}</div>` : cell(issue, field)}</td>`).join('')}</tr>`;
+      const issue = node.issue, treeToggle = sheetTreeToggle(node); visibleIds.push(issue.id);
+      return `<tr class="sheet-issue-row${state.selectedIssueIds.includes(issue.id) ? ' selected' : ''}" data-sheet-row-id="${escape(issue.id)}" data-sheet-depth="${node.depth}" data-sheet-status="${escape(issue.status)}" data-sheet-parent="${escape(issue.parentId || '')}">${columns.map(field => `<td>${field.key === 'id' ? `<div class="sheet-id-cell" style="--sheet-depth:${node.depth}"><input type="checkbox" class="sheet-row-select" data-sheet-select="${escape(issue.id)}" aria-label="Select ${escape(issue.id)}: ${escape(issue.summary)}" ${state.selectedIssueIds.includes(issue.id) ? 'checked' : ''}>${treeToggle}${sheetRowControls(issue, list, manualOrder)}${cell(issue, field)}</div>` : cell(issue, field)}</td>`).join('')}</tr>`;
     };
     const body = state.swimlanes
       ? epicLanes(list).map(lane => {
@@ -948,7 +1104,11 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
         return `<tbody class="sheet-lane-group"><tr class="sheet-lane-row"><td colspan="${columns.length}">${renderSwimlaneHeader(lane, 'sheet-lane-title')}</td></tr>${collapsed ? '' : sheetHierarchyRows(lane.items, lane.id).map(renderRow).join('')}</tbody>`;
       }).join('')
       : `<tbody>${sheetHierarchyRows(list).map(renderRow).join('')}</tbody>`;
-    $('#view-content').innerHTML = `<div class="sheet-tools"><span>Every detail, in one place.</span><div class="sheet-tool-actions"><button type="button" class="button secondary ${manualOrder ? 'selected' : ''}" data-sheet-manual aria-pressed="${manualOrder}" title="Enable rank-based order to move rows">Manual order</button>${sheetColumnMenu()}</div></div><div class="table-wrap"><table class="issue-table"><thead><tr>${columns.map(field => `<th><button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button></th>`).join('')}</tr></thead>${body}</table></div>`;
+    state.selectedIssueIds = state.selectedIssueIds.filter(id => visibleIds.includes(id));
+    const selectedCount = state.selectedIssueIds.length, selectAll = visibleIds.length > 0 && selectedCount === visibleIds.length;
+    const toolStatus = selectedCount ? `${selectedCount} selected · visible rows only` : 'Every detail, in one place.';
+    $('#view-content').innerHTML = `<div class="sheet-tools"><span>${escape(toolStatus)}</span><div class="sheet-tool-actions">${selectedCount ? `<button type="button" class="button primary" data-bulk-edit-open ${selectedCount > 100 ? 'disabled aria-disabled="true" title="Bulk edits support up to 100 issues"' : ''}>Edit selected (${selectedCount})</button>` : ''}<button type="button" class="button secondary ${manualOrder ? 'selected' : ''}" data-sheet-manual aria-pressed="${manualOrder}" title="Enable rank-based order to move rows">Manual order</button>${sheetColumnMenu()}</div></div><div class="table-wrap"><table class="issue-table"><thead><tr>${columns.map(field => `<th>${field.key === 'id' ? `<div class="sheet-id-heading"><input type="checkbox" data-sheet-select-visible aria-label="Select all visible rows" ${selectAll ? 'checked' : ''} ${visibleIds.length > 100 ? 'disabled title="Select up to 100 rows for a bulk edit"' : ''}><button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button></div>` : `<button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button>`}</th>`).join('')}</tr></thead>${body}</table></div>`;
+    const selectAllControl = $('[data-sheet-select-visible]'); if (selectAllControl) selectAllControl.indeterminate = selectedCount > 0 && !selectAll;
   }
   function sortSheetItems(items) {
     return items.slice().sort((a, b) => {
@@ -1342,6 +1502,12 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $('#bulk-create-cancel').addEventListener('click', () => $('#bulk-create-dialog').close());
   $('#bulk-create-input').addEventListener('input', renderBulkPreview);
   $('#bulk-create-submit').addEventListener('click', submitBulkCreate);
+  $('#bulk-edit-close').addEventListener('click', () => $('#bulk-edit-dialog').close());
+  $('#bulk-edit-cancel').addEventListener('click', () => $('#bulk-edit-dialog').close());
+  $('#bulk-edit-field').addEventListener('change', renderBulkEditValue);
+  $('#bulk-edit-value-wrap').addEventListener('change', renderBulkEditPreview);
+  $('#bulk-edit-value-wrap').addEventListener('input', renderBulkEditPreview);
+  $('#bulk-edit-submit').addEventListener('click', submitBulkEdit);
   $('#add-epic').addEventListener('click', () => openIssue('', { type: 'Epic' }));
   $('#refresh').addEventListener('click', () => refresh());
   $('#search').addEventListener('input', event => { state.query = event.target.value; render(); });
@@ -1426,9 +1592,10 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const storyLabel = event.target.closest('.gantt-row-label.has-story-toggle');
     if (ganttStoryClickTimer && (!storyLabel || storyLabel.dataset.open !== ganttStoryClickTimer.id || event.detail > 1)) cancelGanttStoryClick();
     if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover();
-    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-sheet-manual], [data-sheet-column-move], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-toggle-sheet-parent], [data-gantt-add]');
+    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-sheet-manual], [data-sheet-column-move], [data-bulk-edit-open], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-toggle-sheet-parent], [data-gantt-add]');
     if (!target) return;
-    if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
+    if (target.hasAttribute('data-bulk-edit-open')) openBulkEdit();
+    else if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
     else if (target.hasAttribute('data-toggle-gantt-story')) { cancelGanttStoryClick(); const id = target.dataset.toggleGanttStory; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }
     else if (target.hasAttribute('data-toggle-sheet-parent')) { const id = target.dataset.toggleSheetParent; setSheetParentCollapsed(id, !state.collapsedSheetParents[id]); render(); }
     else if (target.hasAttribute('data-gantt-add')) {
@@ -1502,6 +1669,17 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $('#view-content').addEventListener('change', async event => {
     const target = event.target;
     if (target.matches('[data-sheet-column-toggle]')) { toggleSheetColumn(target.dataset.sheetColumnToggle, target.checked); return; }
+    if (target.matches('[data-sheet-select]')) {
+      const selected = new Set(state.selectedIssueIds);
+      if (target.checked) selected.add(target.dataset.sheetSelect); else selected.delete(target.dataset.sheetSelect);
+      if (selected.size > 100) { target.checked = false; notify('Bulk edits support up to 100 selected issues.', true); return; }
+      state.selectedIssueIds = [...selected]; render(); $(`[data-sheet-select="${CSS.escape(target.dataset.sheetSelect)}"]`)?.focus(); return;
+    }
+    if (target.matches('[data-sheet-select-visible]')) {
+      const visible = $$('.sheet-issue-row').map(row => row.dataset.sheetRowId);
+      if (visible.length > 100) { target.checked = false; notify('Select up to 100 visible rows for a bulk edit.', true); return; }
+      state.selectedIssueIds = target.checked ? visible : []; render(); $('[data-sheet-select-visible]')?.focus(); return;
+    }
     if (target.id === 'timeline-date') { if (C.validDate(target.value) && target.checkValidity()) { state.timelineStart = target.value; render(); } return; }
     if (target.id === 'timeline-zoom') { state.zoom = target.value; render(); return; }
     if (!target.dataset.field || state.busy) return;

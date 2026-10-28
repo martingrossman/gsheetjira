@@ -140,3 +140,19 @@ test('server ordering writes ranks through the active versioned repository', () 
   assert.equal(moved.rank, 1000);
   assert.deepEqual(Array.from(h.api.getProject().issues, issue => issue.summary), ['Second', 'First']);
 });
+
+test('bounded bulk updates write every selected record through the active versioned repository', () => {
+  const h = harness();
+  addRecord(h.tabs['Projects and Epics'], { ID: 'PROJECT-1', 'Entity Kind': 'Project', Title: 'Project', Order: 1, Active: true, Revision: 1 });
+  const epic = h.api.saveIssue({ summary: 'Epic', type: 'Epic' });
+  const task = h.api.saveIssue({ summary: 'Task', parentId: epic.id });
+  const result = h.api.updateIssuesBatch([
+    { id: epic.id, expectedVersion: epic.version, operationId: 'v2-bulk-1', updates: { status: 'In Progress' } },
+    { id: task.id, expectedVersion: task.version, operationId: 'v2-bulk-2', updates: { priority: 'Highest' } }
+  ]);
+  assert.equal(result.errors.length, 0);
+  const issues = h.api.getProject().issues;
+  assert.equal(issues.find(issue => issue.id === epic.id).status, 'In Progress');
+  assert.equal(issues.find(issue => issue.id === task.id).priority, 'Highest');
+  assert.equal(issues.find(issue => issue.id === task.id).parentId, epic.id);
+});

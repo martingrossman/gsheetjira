@@ -84,6 +84,69 @@ test('batch creation previews per-item failures and retries accepted items witho
   assert.deepEqual(Array.from(retry.errors, row => row.index), [1]);
   assert.equal(h.rows.length, 3); assert.ok(h.balanced());
 });
+test('bulk updates validate the full bounded batch, save revisions, and replay idempotently', () => {
+  const h = harness(), receipts = new Map(), historyEvents = [];
+  h.api.SheetFlowHistory = {
+    findReceipt: (_, operationId) => operationId && receipts.has(operationId) ? { result: receipts.get(operationId) } : null,
+    record: (_, event) => historyEvents.push(event), receipt: (_, operationId, result) => { if (operationId) receipts.set(operationId, result); }
+  };
+  const first = h.api.saveIssue({ summary: 'First' }), second = h.api.saveIssue({ summary: 'Second' });
+  const items = [
+    { id: first.id, expectedVersion: first.version, operationId: 'edit-1', updates: { status: 'In Progress' } },
+    { id: second.id, expectedVersion: second.version, operationId: 'edit-2', updates: { priority: 'Highest' } }
+  ];
+  const result = h.api.updateIssuesBatch(items);
+  assert.deepEqual(Array.from(result.items, row => row.issue.id), ['PRJ-1', 'PRJ-2']);
+  assert.equal(result.items[0].issue.status, 'In Progress'); assert.equal(result.items[1].issue.priority, 'Highest');
+  assert.equal(historyEvents.filter(event => event.details?.bulk).length, 2); assert.equal(receipts.size, 2);
+  const retry = h.api.updateIssuesBatch(items);
+  assert.equal(retry.replayed, true); assert.deepEqual(Array.from(retry.items, row => row.issue.version), Array.from(result.items, row => row.issue.version));
+  assert.equal(h.api.getProject().issues.length, 2); assert.ok(h.balanced());
+});
+test('invalid or stale bulk updates reject every record before any write', () => {
+  const h = harness(), first = h.api.saveIssue({ summary: 'First' }), second = h.api.saveIssue({ summary: 'Second' });
+  const invalid = h.api.updateIssuesBatch([
+    { id: first.id, expectedVersion: first.version, operationId: 'bad-1', updates: { priority: 'Highest' } },
+    { id: second.id, expectedVersion: second.version, operationId: 'bad-2', updates: { status: 'Not a status' } }
+  ]);
+  assert.equal(invalid.rejected, true); assert.equal(invalid.items.length, 0); assert.deepEqual(Array.from(invalid.errors, error => error.id), [second.id]);
+  assert.equal(h.api.getProject().issues.find(issue => issue.id === first.id).priority, 'Medium');
+  h.api.saveIssue({ id: second.id, status: 'In Progress' }, second.version);
+  const stale = h.api.updateIssuesBatch([
+    { id: first.id, expectedVersion: first.version, operationId: 'stale-1', updates: { priority: 'High' } },
+    { id: second.id, expectedVersion: second.version, operationId: 'stale-2', updates: { status: 'Review' } }
+  ]);
+  assert.equal(stale.rejected, true); assert.equal(stale.items.length, 0); assert.equal(h.api.getProject().issues.find(issue => issue.id === first.id).priority, 'Medium');
+  assert.equal(h.api.getProject().issues.find(issue => issue.id === second.id).status, 'In Progress');
+  assert.ok(h.balanced());
+});
+test('bulk update undo can restore the progress behind a completed status', () => {
+  const h = harness(), receipts = new Map(), issue = h.api.saveIssue({ summary: 'Partially done', progress: 73 });
+  h.api.SheetFlowHistory = {
+    findReceipt: (_, operationId) => operationId && receipts.has(operationId) ? { result: receipts.get(operationId) } : null,
+    record: () => {}, receipt: (_, operationId, result) => { if (operationId) receipts.set(operationId, result); }
+  };
+  const completed = h.api.updateIssuesBatch([{ id: issue.id, expectedVersion: issue.version, operationId: 'complete-1', updates: { status: 'Done' } }]).items[0].issue;
+  assert.equal(completed.progress, 100);
+  const restored = h.api.updateIssuesBatch([{ id: issue.id, expectedVersion: completed.version, operationId: 'undo-complete-1', updates: { status: 'Backlog' }, restoreProgress: 73 }]).items[0].issue;
+  assert.equal(restored.status, 'Backlog'); assert.equal(restored.progress, 73);
+});
+test('a storage failure during bulk save restores already-written issue rows', () => {
+  const h = harness(), first = h.api.saveIssue({ summary: 'First' }), second = h.api.saveIssue({ summary: 'Second' });
+  const originalGetRange = h.sheet.getRange.bind(h.sheet); let failSecondRowOnce = true;
+  h.sheet.getRange = (row, column, height, width) => {
+    const range = originalGetRange(row, column, height, width);
+    if (row === 3 && column === 1 && failSecondRowOnce) return { ...range, setValues: () => { failSecondRowOnce = false; throw new Error('simulated storage failure'); } };
+    return range;
+  };
+  assert.throws(() => h.api.updateIssuesBatch([
+    { id: first.id, expectedVersion: first.version, operationId: 'write-fail-1', updates: { priority: 'High' } },
+    { id: second.id, expectedVersion: second.version, operationId: 'write-fail-2', updates: { priority: 'High' } }
+  ]), /All written rows were restored/);
+  assert.equal(h.api.getProject().issues.find(issue => issue.id === first.id).priority, 'Medium');
+  assert.equal(h.api.getProject().issues.find(issue => issue.id === second.id).priority, 'Medium');
+  assert.ok(h.balanced());
+});
 test('content versions detect direct sheet edits even without an edit trigger', () => {
   const h = harness(), issue = h.api.saveIssue({ summary: 'Original' });
   h.rows[1][3] = 'Changed in Sheets';

@@ -98,6 +98,80 @@ function createIssuesBatch(items) {
     return { items: results, errors: errors };
   });
 }
+/** Validate a bounded bulk edit completely before writing any issue rows. */
+function updateIssuesBatch(items) {
+  return withLock_(function () {
+    authorizationService_().require('write');
+    if (!Array.isArray(items) || !items.length || items.length > 100) throw new Error('Select between 1 and 100 issues for a bulk edit.');
+    var book = getBook_(), history = historyService_(), issues = readIssues_(book), ids = new Set(), operationIds = new Set(), prepared = [], errors = [], receipts = [];
+    items.forEach(function (item) {
+      try {
+        if (!item || !item.id || !item.updates || typeof item.updates !== 'object' || Array.isArray(item.updates)) throw new Error('Missing issue fields.');
+        if (ids.has(String(item.id))) throw new Error('An issue can appear only once in a bulk edit.');
+        ids.add(String(item.id));
+        var keys = Object.keys(item.updates), supported = ['status', 'assignee', 'priority', 'parentId', 'taskTypeId', 'startDate', 'dueDate'];
+        if (keys.length !== 1 || supported.indexOf(keys[0]) < 0) throw new Error('Choose one supported field for the bulk edit.');
+        if (item.restoreProgress !== undefined && (keys[0] !== 'status' || !Number.isFinite(Number(item.restoreProgress)) || Number(item.restoreProgress) < 0 || Number(item.restoreProgress) > 100)) throw new Error('Invalid progress restoration value.');
+        var operationId = String(item.operationId || '');
+        if (!operationId || operationIds.has(operationId)) throw new Error('Each issue needs a unique operation ID.');
+        operationIds.add(operationId);
+        var previousReceipt = history.findReceipt(book, operationId);
+        receipts.push(previousReceipt);
+        if (previousReceipt) return;
+        var current = issues.find(function (issue) { return issue.id === String(item.id); });
+        if (!current) throw new Error('This issue no longer exists. Refresh the project.');
+        if (!item.expectedVersion || current.version !== item.expectedVersion) throw new Error('This issue changed elsewhere. Refresh, then apply the bulk edit again.');
+        var input = { id: current.id }; input[keys[0]] = item.updates[keys[0]];
+        var updatedIssue = TrackerCore.prepare(input, current, today_(book), new Date().toISOString());
+        if (item.restoreProgress !== undefined) updatedIssue.progress = Number(item.restoreProgress);
+        prepared.push({ item: item, current: current, field: keys[0], operationId: operationId, issue: updatedIssue });
+      } catch (error) { errors.push({ id: item && item.id || '', message: error && error.message ? error.message : String(error) }); }
+    });
+    if (errors.length) return { items: [], errors: errors, rejected: true };
+    var acceptedReceipts = receipts.filter(Boolean);
+    if (acceptedReceipts.length) {
+      if (acceptedReceipts.length !== items.length) return { items: [], errors: [{ id: '', message: 'A previous bulk operation is only partly recorded. Refresh the project before retrying.' }], rejected: true };
+      return { items: acceptedReceipts.map(function (receipt, index) { return { id: items[index].id, issue: receipt.result }; }), errors: [], replayed: true };
+    }
+    var projected = issues.map(function (issue) {
+      var change = prepared.find(function (entry) { return entry.current.id === issue.id; });
+      return change ? change.issue : issue;
+    });
+    prepared.forEach(function (entry) {
+      try { TrackerCore.validate(entry.issue, projected); }
+      catch (error) { errors.push({ id: entry.current.id, message: error && error.message ? error.message : String(error) }); }
+    });
+    if (errors.length) return { items: [], errors: errors, rejected: true };
+    var written = [];
+    try {
+      prepared.forEach(function (entry) { writeIssue_(book, entry.issue, entry.current); written.push(entry); });
+      if (!versionedRepositoryActive_(book) && typeof SheetFlowSettings !== 'undefined') prepared.forEach(function (entry) {
+        if (entry.field === 'taskTypeId' && entry.current.taskTypeId !== entry.issue.taskTypeId) SheetFlowSettings.setTaskType(book, entry.current.id, entry.issue.taskTypeId);
+      });
+      SpreadsheetApp.flush();
+    } catch (writeError) {
+      var rollbackErrors = [];
+      written.slice().reverse().forEach(function (entry) {
+        try {
+          writeIssue_(book, entry.current, Object.assign({}, entry.issue, { _row: entry.current._row }));
+          if (!versionedRepositoryActive_(book) && typeof SheetFlowSettings !== 'undefined' && entry.field === 'taskTypeId') SheetFlowSettings.setTaskType(book, entry.current.id, entry.current.taskTypeId);
+        } catch (rollbackError) { rollbackErrors.push(rollbackError && rollbackError.message ? rollbackError.message : String(rollbackError)); }
+      });
+      SpreadsheetApp.flush();
+      throw new Error('Bulk update failed during save. ' + (rollbackErrors.length ? 'Some rows could not be restored; run Refresh and review the project. ' : 'All written rows were restored. ') + (writeError && writeError.message ? writeError.message : String(writeError)));
+    }
+    var savedIssues = readIssues_(book), results = [];
+    prepared.forEach(function (entry) {
+      var saved = savedIssues.find(function (issue) { return issue.id === entry.current.id; });
+      var changedFields = TrackerCore.fields.filter(function (field) { return entry.current[field.key] !== saved[field.key]; }).map(function (field) { return field.key; });
+      if (entry.current.taskTypeId !== saved.taskTypeId) changedFields.push('taskTypeId');
+      history.record(book, { operationId: entry.operationId, entityId: saved.id, eventKind: 'updated', beforeRevision: entry.current.version, afterRevision: saved.version, changedFields: changedFields, details: { source: 'app', bulk: true } });
+      history.receipt(book, entry.operationId, saved);
+      results.push({ id: saved.id, issue: saved });
+    });
+    return { items: results, errors: [] };
+  });
+}
 function saveIssueLocked_(book, input, expectedVersion) {
   var operationId = input && input.operationId, history = historyService_();
   var previousReceipt = history.findReceipt(book, operationId);

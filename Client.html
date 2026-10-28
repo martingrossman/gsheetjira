@@ -53,7 +53,7 @@
     order.unshift('id');
     return order;
   }
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], savedViews: [], activeSavedView: '', visibleColumns: defaultSheetColumnOrder.slice(), collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], selectedIssueIds: [], bulkEditDraft: null, savedViews: [], activeSavedView: '', visibleColumns: defaultSheetColumnOrder.slice(), collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
@@ -115,7 +115,7 @@
     localStorage.setItem(savedViewsStorageKey, JSON.stringify(state.savedViews)); renderSavedViews(); notify('Saved view deleted');
   }
   function saveUndoState() { localStorage.setItem(undoStorageKey, JSON.stringify(state.undoStack.slice(-50))); updateUndoControl(); }
-  function updateUndoControl() { const button = $('#undo-last-action'); if (button) { const entry = state.undoStack.at(-1); button.disabled = !entry; button.title = entry ? `Undo last saved change to ${entry.id}` : 'No saved issue changes to undo'; } }
+  function updateUndoControl() { const button = $('#undo-last-action'); if (button) { const entry = state.undoStack.at(-1); button.disabled = !entry; button.title = entry ? (entry.kind === 'bulk' ? `Undo last bulk change to ${entry.items.length} issues` : `Undo last saved change to ${entry.id}`) : 'No saved issue changes to undo'; } }
   function undoSnapshot(issue) { return Object.fromEntries([...C.fields.map(field => [field.key, issue[field.key]]), ['taskTypeId', issue.taskTypeId]]); }
   function undoBusinessKeys() { return [...C.fields.map(field => field.key), 'taskTypeId'].filter(key => !['id', 'createdAt', 'updatedAt', 'completedDate'].includes(key)); }
   function sameUndoValues(left, right) { return undoBusinessKeys().every(key => String(left?.[key] ?? '') === String(right?.[key] ?? '')); }
@@ -227,6 +227,40 @@
       }
       return { items: results, errors };
     }
+    if (method === 'updateIssuesBatch') {
+      const db = getLocal(), items = args[0] || [], receipts = JSON.parse(localStorage.getItem(localReceiptStorageKey) || '{}');
+      if (!Array.isArray(items) || !items.length || items.length > 100) throw new Error('Select between 1 and 100 issues for a bulk edit.');
+      const previous = items.map(item => receipts[item.operationId] || null);
+      if (previous.some(Boolean)) {
+        if (previous.every(Boolean)) return { items: previous.map((issue, index) => ({ id: items[index].id, issue })), errors: [], replayed: true };
+        return { items: [], errors: [{ id: '', message: 'A previous bulk operation is only partly recorded. Refresh the project before retrying.' }], rejected: true };
+      }
+      const byId = new Map(db.issues.map(issue => [issue.id, issue])), seen = new Set(), prepared = [], errors = [];
+      items.forEach(item => {
+        try {
+          if (!item || !item.id || seen.has(item.id)) throw new Error('An issue can appear only once in a bulk edit.');
+          seen.add(item.id);
+          const keys = Object.keys(item.updates || {}), supported = ['status', 'assignee', 'priority', 'parentId', 'taskTypeId', 'startDate', 'dueDate'];
+          if (keys.length !== 1 || !supported.includes(keys[0]) || !item.operationId) throw new Error('Choose one supported field for the bulk edit.');
+          if (item.restoreProgress !== undefined && (keys[0] !== 'status' || !Number.isFinite(Number(item.restoreProgress)) || Number(item.restoreProgress) < 0 || Number(item.restoreProgress) > 100)) throw new Error('Invalid progress restoration value.');
+          const current = byId.get(item.id);
+          if (!current) throw new Error('This issue no longer exists. Refresh the project.');
+          if (current.version !== item.expectedVersion) throw new Error('This issue changed elsewhere. Refresh, then apply the bulk edit again.');
+          const issue = C.prepare({ id: current.id, [keys[0]]: item.updates[keys[0]] }, current, today(), new Date().toISOString());
+          if (item.restoreProgress !== undefined) issue.progress = Number(item.restoreProgress);
+          prepared.push({ item, current, issue });
+        } catch (error) { errors.push({ id: item?.id || '', message: error.message || String(error) }); }
+      });
+      if (!errors.length) {
+        const projected = db.issues.map(issue => prepared.find(entry => entry.current.id === issue.id)?.issue || issue);
+        prepared.forEach(entry => { try { C.validate(entry.issue, projected); } catch (error) { errors.push({ id: entry.current.id, message: error.message || String(error) }); } });
+      }
+      if (errors.length) return { items: [], errors, rejected: true };
+      prepared.forEach(entry => { entry.issue.version = crypto.randomUUID(); receipts[entry.item.operationId] = entry.issue; });
+      db.issues = db.issues.map(issue => prepared.find(entry => entry.current.id === issue.id)?.issue || issue);
+      localStorage.setItem(storageKey, JSON.stringify(db)); localStorage.setItem(localReceiptStorageKey, JSON.stringify(receipts));
+      return { items: prepared.map(entry => ({ id: entry.issue.id, issue: entry.issue })), errors: [] };
+    }
     const db = getLocal();
     if (method === 'getProject') return { issues: db.issues, comments: db.comments.reduce((map, comment) => { (map[comment.taskId] ||= []).push(comment); return map; }, {}), settings: [], spreadsheetUrl: '', name: 'Sample project' };
     if (method === 'addTaskComment') {
@@ -325,6 +359,91 @@
       $('#bulk-create-error').textContent = `${error.message || String(error)} Your batch is saved locally; retry with the same operation IDs.`; $('#bulk-create-error').hidden = false;
       $('#bulk-create-status').textContent = 'Batch saved for retry'; $('#bulk-create-open').textContent = 'Resume batch';
     } finally { state.activeSaves = Math.max(0, state.activeSaves - 1); button.disabled = false; renderBulkPreview(); queueMicrotask(drainQuickQueue); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); }
+  }
+  function bulkEditTargets() { return state.selectedIssueIds.map(issueById).filter(Boolean); }
+  function openBulkEdit() {
+    const selected = bulkEditTargets();
+    if (!selected.length || selected.length > 100) { notify('Bulk edits support between 1 and 100 visible issues.', true); return; }
+    state.bulkEditDraft = null;
+    $('#bulk-edit-field').value = ''; $('#bulk-edit-value-wrap').innerHTML = '';
+    $('#bulk-edit-selection-count').textContent = `${selected.length} visible ${selected.length === 1 ? 'issue is' : 'issues are'} selected. Hidden or collapsed issues are excluded.`;
+    $('#bulk-edit-error').hidden = true; $('#bulk-edit-status').textContent = '';
+    $('#bulk-edit-preview').classList.remove('error'); $('#bulk-edit-preview').textContent = 'Choose a field to preview the change.';
+    $('#bulk-edit-submit').disabled = true; $('#bulk-edit-dialog').showModal(); $('#bulk-edit-field').focus();
+  }
+  function renderBulkEditValue() {
+    const field = $('#bulk-edit-field').value, wrap = $('#bulk-edit-value-wrap');
+    const controls = {
+      status: `<label class="field">New status<select data-bulk-edit-value>${options(C.statuses, '', 'Choose status…')}</select></label>`,
+      assignee: `<label class="field">New assignee<select data-bulk-edit-value>${options([{ value: '', label: 'Unassigned' }, ...[...new Set(state.issues.map(issue => issue.assignee).filter(Boolean))].sort().map(value => ({ value, label: value }))])}</select></label>`,
+      priority: `<label class="field">New priority<select data-bulk-edit-value>${options(C.priorities, '', 'Choose priority…')}</select></label>`,
+      parentId: `<label class="field">Epic<select data-bulk-edit-value>${options([{ value: '', label: 'No epic' }, ...C.sorted(state.issues.filter(issue => issue.type === 'Epic')).map(issue => ({ value: issue.id, label: `${issue.id} · ${issue.summary}` }))])}</select></label>`,
+      taskTypeId: `<label class="field">Activity type<select data-bulk-edit-value>${options(activityTypes(), '', 'Choose activity type…')}</select></label>`,
+      startDate: '<label class="field">New start date<input data-bulk-edit-value type="date"><small>Leave blank to clear the start date.</small></label>',
+      dueDate: '<label class="field">New due date<input data-bulk-edit-value type="date"><small>Leave blank to clear the due date.</small></label>'
+    };
+    wrap.innerHTML = controls[field] || '';
+    renderBulkEditPreview();
+  }
+  function bulkEditPreviewData() {
+    const field = $('#bulk-edit-field').value, control = $('[data-bulk-edit-value]'), selected = bulkEditTargets();
+    if (!field || !control) return { selected, changed: [], errors: [], field, value: undefined };
+    const value = control.value, changed = selected.filter(issue => String(issue[field] ?? '') !== String(value ?? ''));
+    const projected = state.issues.map(issue => {
+      if (!changed.some(target => target.id === issue.id)) return issue;
+      return C.prepare({ id: issue.id, [field]: value }, issue, today(), new Date().toISOString());
+    });
+    const errors = [];
+    if (field === 'startDate' || field === 'dueDate') {
+      if (value && !C.validDate(value)) errors.push({ id: '', message: 'Choose a real date.' });
+    }
+    changed.forEach(issue => {
+      const candidate = projected.find(item => item.id === issue.id);
+      try { C.validate(candidate, projected); } catch (error) { errors.push({ id: issue.id, message: error.message || String(error) }); }
+    });
+    return { selected, changed, errors, field, value };
+  }
+  function renderBulkEditPreview() {
+    const preview = $('#bulk-edit-preview'), submit = $('#bulk-edit-submit');
+    if (!preview || !submit) return;
+    const data = bulkEditPreviewData(), labels = { status: 'status', assignee: 'assignee', priority: 'priority', parentId: 'Epic', taskTypeId: 'activity type', startDate: 'start date', dueDate: 'due date' };
+    preview.classList.toggle('error', data.errors.length > 0);
+    if (data.errors.length) preview.innerHTML = `${data.changed.length} of ${data.selected.length} selected would change, but the batch is invalid:<ul>${data.errors.map(error => `<li>${error.id ? `${escape(error.id)}: ` : ''}${escape(error.message)}</li>`).join('')}</ul>`;
+    else if (!data.field) preview.textContent = 'Choose a field to preview the change.';
+    else preview.textContent = `${data.changed.length} of ${data.selected.length} selected ${labels[data.field]} will change. The batch is validated before saving.`;
+    submit.disabled = state.activeSaves > 0 || !data.field || !data.changed.length || data.errors.length > 0;
+  }
+  async function submitBulkEdit() {
+    const data = bulkEditPreviewData();
+    if (data.errors.length || !data.changed.length || !data.field || state.activeSaves) return;
+    const fingerprint = JSON.stringify({ field: data.field, value: data.value, items: data.changed.map(issue => [issue.id, issue.version]) });
+    if (!state.bulkEditDraft || state.bulkEditDraft.fingerprint !== fingerprint) {
+      const batchId = `bulk-edit-${newOperationId()}`;
+      state.bulkEditDraft = { fingerprint, items: data.changed.map(issue => ({ id: issue.id, expectedVersion: issue.version, operationId: `${batchId}:${issue.id}`, updates: { [data.field]: data.value } })) };
+    }
+    const button = $('#bulk-edit-submit'), draft = state.bulkEditDraft;
+    button.disabled = true; $('#bulk-edit-error').hidden = true; $('#bulk-edit-status').textContent = 'Applying…';
+    state.activeSaves++; syncText('Applying bulk edit…');
+    try {
+      const response = await rpc('updateIssuesBatch', draft.items);
+      if (response.errors?.length) {
+        state.bulkEditDraft = null;
+        $('#bulk-edit-error').innerHTML = `No issues were changed. ${response.errors.map(error => `${error.id ? `${escape(error.id)}: ` : ''}${escape(error.message)}`).join(' ')}`;
+        $('#bulk-edit-error').hidden = false; $('#bulk-edit-status').textContent = 'Batch rejected';
+        return;
+      }
+      const before = new Map(data.changed.map(issue => [issue.id, undoSnapshot(issue)]));
+      const saved = (response.items || []).map(item => item.issue);
+      saved.forEach(issue => { state.issues = state.issues.map(current => current.id === issue.id ? issue : current); });
+      if (saved.length) {
+        state.undoStack.push({ kind: 'bulk', id: `${saved.length} issues`, field: data.field, items: saved.map(issue => ({ id: issue.id, before: before.get(issue.id), after: undoSnapshot(issue), afterVersion: issue.version })) });
+        state.undoStack = state.undoStack.slice(-50); saveUndoState();
+      }
+      state.bulkEditDraft = null; state.selectedIssueIds = [];
+      $('#bulk-edit-dialog').close(); render(); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); notify(`${saved.length} issues updated`);
+    } catch (error) {
+      $('#bulk-edit-error').textContent = `${error.message || String(error)} Retry to safely check the same operation.`; $('#bulk-edit-error').hidden = false; $('#bulk-edit-status').textContent = 'Save status unknown';
+    } finally { state.activeSaves = Math.max(0, state.activeSaves - 1); button.disabled = false; renderBulkEditPreview(); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); }
   }
   function showError(error, draftKeyOverride = '') {
     const failedDraftKey = draftKeyOverride || draftStorageKeyFor(edited?.id);
@@ -453,7 +572,8 @@
   async function undoLastCommand() {
     const entry = state.undoStack.at(-1);
     if (!entry) return;
-    if (state.busy || hasPendingSaves() || dialog.open || Object.keys(state.drafts).length || state.quickQueue.length || state.bulkDraft) { notify('Finish or discard pending edits before undoing.', true); return; }
+    if (state.busy || hasPendingSaves() || dialog.open || $('#bulk-edit-dialog').open || Object.keys(state.drafts).length || state.quickQueue.length || state.bulkDraft || state.bulkEditDraft) { notify('Finish or discard pending edits before undoing.', true); return; }
+    if (entry.kind === 'bulk') { await undoBulkCommand(entry); return; }
     const current = issueById(entry.id);
     if (!current || current.version !== entry.afterVersion) { notify('This issue changed after the saved action. Refresh before undoing it.', true); return; }
     try {
@@ -464,6 +584,34 @@
       if (previous) previous.afterVersion = undone.version;
       saveUndoState();
     } catch (error) { notify(`Could not undo: ${error.message}`, true); }
+  }
+  async function undoBulkCommand(entry) {
+    const currents = entry.items.map(item => issueById(item.id));
+    if (currents.some((issue, index) => !issue || issue.version !== entry.items[index].afterVersion)) { notify('One or more issues changed after the bulk edit. Refresh before undoing it.', true); return; }
+    if (!entry.undoItems) {
+      entry.undoItems = entry.items.map((item, index) => ({ id: item.id, expectedVersion: currents[index].version, operationId: `undo-bulk-${newOperationId()}:${item.id}`, updates: { [entry.field]: item.before[entry.field] }, ...(entry.field === 'status' ? { restoreProgress: item.before.progress } : {}) }));
+      saveUndoState();
+    }
+    const items = entry.undoItems;
+    state.activeSaves++; syncText('Undoing bulk edit…'); updateUndoControl();
+    try {
+      const response = await rpc('updateIssuesBatch', items);
+      if (response.errors?.length) { notify(`Could not undo: ${response.errors.map(error => error.message).join(' ')}`, true); return; }
+      const undone = response.items.map(row => row.issue);
+      undone.forEach(issue => { state.issues = state.issues.map(current => current.id === issue.id ? issue : current); });
+      state.undoStack.pop();
+      undone.forEach(issue => {
+        const item = entry.items.find(candidate => candidate.id === issue.id);
+        for (const previous of state.undoStack.slice().reverse()) {
+          if (previous.kind === 'bulk') {
+            const prior = previous.items.find(candidate => candidate.id === issue.id);
+            if (prior && sameUndoValues(prior.after, item.before)) { prior.afterVersion = issue.version; break; }
+          } else if (previous.id === issue.id && sameUndoValues(previous.after, item.before)) { previous.afterVersion = issue.version; break; }
+        }
+      });
+      saveUndoState(); render(); notify(`Bulk change undone for ${undone.length} issues`);
+    } catch (error) { notify(`Could not undo: ${error.message}`, true); }
+    finally { state.activeSaves = Math.max(0, state.activeSaves - 1); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); }
   }
   function issueById(id) { return state.issues.find(i => i.id === id); }
   function effectiveDates(issue) {
@@ -626,11 +774,11 @@
   }
   function renderSheet(issues) {
     const definitions = sheetColumnDefinitions(), columns = normalizeSheetColumnOrder(state.visibleColumns).map(key => definitions.get(key)).filter(Boolean);
-    const list = sortSheetItems(issues);
+    const list = sortSheetItems(issues), visibleIds = [];
     const manualOrder = state.sort === 'rank' && state.ascending;
     const renderRow = node => {
-      const issue = node.issue, treeToggle = sheetTreeToggle(node);
-      return `<tr class="sheet-issue-row" data-sheet-row-id="${escape(issue.id)}" data-sheet-depth="${node.depth}" data-sheet-status="${escape(issue.status)}" data-sheet-parent="${escape(issue.parentId || '')}">${columns.map(field => `<td>${field.key === 'id' ? `<div class="sheet-id-cell" style="--sheet-depth:${node.depth}">${treeToggle}${sheetRowControls(issue, list, manualOrder)}${cell(issue, field)}</div>` : cell(issue, field)}</td>`).join('')}</tr>`;
+      const issue = node.issue, treeToggle = sheetTreeToggle(node); visibleIds.push(issue.id);
+      return `<tr class="sheet-issue-row${state.selectedIssueIds.includes(issue.id) ? ' selected' : ''}" data-sheet-row-id="${escape(issue.id)}" data-sheet-depth="${node.depth}" data-sheet-status="${escape(issue.status)}" data-sheet-parent="${escape(issue.parentId || '')}">${columns.map(field => `<td>${field.key === 'id' ? `<div class="sheet-id-cell" style="--sheet-depth:${node.depth}"><input type="checkbox" class="sheet-row-select" data-sheet-select="${escape(issue.id)}" aria-label="Select ${escape(issue.id)}: ${escape(issue.summary)}" ${state.selectedIssueIds.includes(issue.id) ? 'checked' : ''}>${treeToggle}${sheetRowControls(issue, list, manualOrder)}${cell(issue, field)}</div>` : cell(issue, field)}</td>`).join('')}</tr>`;
     };
     const body = state.swimlanes
       ? epicLanes(list).map(lane => {
@@ -638,7 +786,11 @@
         return `<tbody class="sheet-lane-group"><tr class="sheet-lane-row"><td colspan="${columns.length}">${renderSwimlaneHeader(lane, 'sheet-lane-title')}</td></tr>${collapsed ? '' : sheetHierarchyRows(lane.items, lane.id).map(renderRow).join('')}</tbody>`;
       }).join('')
       : `<tbody>${sheetHierarchyRows(list).map(renderRow).join('')}</tbody>`;
-    $('#view-content').innerHTML = `<div class="sheet-tools"><span>Every detail, in one place.</span><div class="sheet-tool-actions"><button type="button" class="button secondary ${manualOrder ? 'selected' : ''}" data-sheet-manual aria-pressed="${manualOrder}" title="Enable rank-based order to move rows">Manual order</button>${sheetColumnMenu()}</div></div><div class="table-wrap"><table class="issue-table"><thead><tr>${columns.map(field => `<th><button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button></th>`).join('')}</tr></thead>${body}</table></div>`;
+    state.selectedIssueIds = state.selectedIssueIds.filter(id => visibleIds.includes(id));
+    const selectedCount = state.selectedIssueIds.length, selectAll = visibleIds.length > 0 && selectedCount === visibleIds.length;
+    const toolStatus = selectedCount ? `${selectedCount} selected · visible rows only` : 'Every detail, in one place.';
+    $('#view-content').innerHTML = `<div class="sheet-tools"><span>${escape(toolStatus)}</span><div class="sheet-tool-actions">${selectedCount ? `<button type="button" class="button primary" data-bulk-edit-open ${selectedCount > 100 ? 'disabled aria-disabled="true" title="Bulk edits support up to 100 issues"' : ''}>Edit selected (${selectedCount})</button>` : ''}<button type="button" class="button secondary ${manualOrder ? 'selected' : ''}" data-sheet-manual aria-pressed="${manualOrder}" title="Enable rank-based order to move rows">Manual order</button>${sheetColumnMenu()}</div></div><div class="table-wrap"><table class="issue-table"><thead><tr>${columns.map(field => `<th>${field.key === 'id' ? `<div class="sheet-id-heading"><input type="checkbox" data-sheet-select-visible aria-label="Select all visible rows" ${selectAll ? 'checked' : ''} ${visibleIds.length > 100 ? 'disabled title="Select up to 100 rows for a bulk edit"' : ''}><button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button></div>` : `<button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button>`}</th>`).join('')}</tr></thead>${body}</table></div>`;
+    const selectAllControl = $('[data-sheet-select-visible]'); if (selectAllControl) selectAllControl.indeterminate = selectedCount > 0 && !selectAll;
   }
   function sortSheetItems(items) {
     return items.slice().sort((a, b) => {
@@ -1032,6 +1184,12 @@
   $('#bulk-create-cancel').addEventListener('click', () => $('#bulk-create-dialog').close());
   $('#bulk-create-input').addEventListener('input', renderBulkPreview);
   $('#bulk-create-submit').addEventListener('click', submitBulkCreate);
+  $('#bulk-edit-close').addEventListener('click', () => $('#bulk-edit-dialog').close());
+  $('#bulk-edit-cancel').addEventListener('click', () => $('#bulk-edit-dialog').close());
+  $('#bulk-edit-field').addEventListener('change', renderBulkEditValue);
+  $('#bulk-edit-value-wrap').addEventListener('change', renderBulkEditPreview);
+  $('#bulk-edit-value-wrap').addEventListener('input', renderBulkEditPreview);
+  $('#bulk-edit-submit').addEventListener('click', submitBulkEdit);
   $('#add-epic').addEventListener('click', () => openIssue('', { type: 'Epic' }));
   $('#refresh').addEventListener('click', () => refresh());
   $('#search').addEventListener('input', event => { state.query = event.target.value; render(); });
@@ -1116,9 +1274,10 @@
     const storyLabel = event.target.closest('.gantt-row-label.has-story-toggle');
     if (ganttStoryClickTimer && (!storyLabel || storyLabel.dataset.open !== ganttStoryClickTimer.id || event.detail > 1)) cancelGanttStoryClick();
     if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover();
-    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-sheet-manual], [data-sheet-column-move], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-toggle-sheet-parent], [data-gantt-add]');
+    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-sheet-manual], [data-sheet-column-move], [data-bulk-edit-open], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-toggle-sheet-parent], [data-gantt-add]');
     if (!target) return;
-    if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
+    if (target.hasAttribute('data-bulk-edit-open')) openBulkEdit();
+    else if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
     else if (target.hasAttribute('data-toggle-gantt-story')) { cancelGanttStoryClick(); const id = target.dataset.toggleGanttStory; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }
     else if (target.hasAttribute('data-toggle-sheet-parent')) { const id = target.dataset.toggleSheetParent; setSheetParentCollapsed(id, !state.collapsedSheetParents[id]); render(); }
     else if (target.hasAttribute('data-gantt-add')) {
@@ -1192,6 +1351,17 @@
   $('#view-content').addEventListener('change', async event => {
     const target = event.target;
     if (target.matches('[data-sheet-column-toggle]')) { toggleSheetColumn(target.dataset.sheetColumnToggle, target.checked); return; }
+    if (target.matches('[data-sheet-select]')) {
+      const selected = new Set(state.selectedIssueIds);
+      if (target.checked) selected.add(target.dataset.sheetSelect); else selected.delete(target.dataset.sheetSelect);
+      if (selected.size > 100) { target.checked = false; notify('Bulk edits support up to 100 selected issues.', true); return; }
+      state.selectedIssueIds = [...selected]; render(); $(`[data-sheet-select="${CSS.escape(target.dataset.sheetSelect)}"]`)?.focus(); return;
+    }
+    if (target.matches('[data-sheet-select-visible]')) {
+      const visible = $$('.sheet-issue-row').map(row => row.dataset.sheetRowId);
+      if (visible.length > 100) { target.checked = false; notify('Select up to 100 visible rows for a bulk edit.', true); return; }
+      state.selectedIssueIds = target.checked ? visible : []; render(); $('[data-sheet-select-visible]')?.focus(); return;
+    }
     if (target.id === 'timeline-date') { if (C.validDate(target.value) && target.checkValidity()) { state.timelineStart = target.value; render(); } return; }
     if (target.id === 'timeline-zoom') { state.zoom = target.value; render(); return; }
     if (!target.dataset.field || state.busy) return;

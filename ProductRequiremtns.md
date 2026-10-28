@@ -105,6 +105,8 @@ Only the title is required when creating a task. Other fields receive configured
 - Filter by status, assignee, project, epic, task type, priority, tags, and dates.
 - Support sorting and grouping, including optional grouping by epic.
 - When grouped by epic, show collapsible epic sections with task counts and completion progress.
+- Allow selection of visible table rows and preview bulk changes to status, assignee, priority, epic, task type, and dates. Limit each batch to 100 issues, exclude filtered or collapsed rows, and reject the whole batch without writes if any selected issue is invalid or stale.
+- Provide revision-checked undo for a completed bulk edit.
 - Support saved views.
 - Display subtasks beneath their parent tasks.
 - Highlight blocked, overdue, and unassigned tasks.
