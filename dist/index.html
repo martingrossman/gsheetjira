@@ -51,7 +51,8 @@
 .gantt-grid{--label-width:260px}.gantt-label-head{box-sizing:border-box;width:calc(var(--label-width) - 8px);min-width:calc(var(--label-width) - 8px);flex:0 0 calc(var(--label-width) - 8px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.gantt-row-label{box-sizing:border-box;width:calc(var(--label-width) - 8px)!important;min-width:calc(var(--label-width) - 8px)!important;flex:0 0 calc(var(--label-width) - 8px);padding:0 5px!important;gap:2px;overflow:hidden}.gantt-resize-gutter{box-sizing:border-box;width:8px;min-width:8px;flex:0 0 8px;background:var(--surface-muted);border-right:1px solid var(--line);position:sticky;left:calc(var(--label-width) - 8px);z-index:4}.gantt-resizer{position:sticky;left:calc(var(--label-width) - 8px);cursor:col-resize;touch-action:none;background:linear-gradient(90deg,var(--surface-muted) 3px,var(--line) 3px 4px,var(--surface-muted) 4px);z-index:7}.gantt-resizer:hover,.gantt-resizer:focus-visible{background:linear-gradient(90deg,var(--surface-muted) 2px,var(--primary) 2px 5px,var(--surface-muted) 5px);outline:none}.gantt-row-label .gantt-label-hit{min-width:0;flex:1;display:flex;align-items:center;gap:5px;overflow:hidden;text-align:left;padding:0 0 0 calc(4px + var(--row-depth,0)*12px);font-size:10px}.gantt-label-copy{display:flex;flex-direction:column;min-width:0;flex:1;overflow:hidden}.gantt-label-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-label-summary{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-row-label>.task-type-badge{width:16px;height:16px;flex-basis:16px;font-size:8px}.gantt-add-button{flex:0 0 21px;width:21px;height:21px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--muted);font-size:14px;line-height:1;padding:0;z-index:8}.gantt-add-button:hover,.gantt-add-button:focus-visible{color:var(--primary);border-color:var(--primary);outline:none}.gantt-epic-label{display:flex;align-items:center}.gantt-epic-label .swimlane-header{min-width:0;flex:1;overflow:hidden}.gantt-epic-label .swimlane-collapse{min-width:0;overflow:hidden;gap:4px}.gantt-epic-label .swimlane-collapse strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-epic-label .swimlane-progress,.gantt-epic-label .swimlane-dates{display:none}.gantt-epic-label .swimlane-edit{padding:3px 5px;font-size:8px}.gantt-epic-row .gantt-track{flex:0 0 auto}.timeline-links{left:var(--label-width,260px)}.gantt-bar{max-width:100%}.epic-summary-bar{cursor:pointer;pointer-events:auto}.epic-summary-bar:focus-visible,.gantt-label-hit:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}.gantt-quick-anchor{position:relative;flex:0 0 auto}.gantt-quick-popover{position:absolute;top:25px;right:0;z-index:12;width:230px;padding:9px;display:grid;gap:7px;border:1px solid var(--line);border-radius:7px;background:var(--surface);box-shadow:0 8px 25px #0F172A24}.gantt-quick-popover input,.gantt-quick-popover select{width:100%;min-width:0;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:7px;font-size:10px}.gantt-quick-popover button{padding:6px 9px;border-radius:5px;background:var(--primary);color:white;font-size:10px}.gantt-comment-preview{position:fixed;z-index:30;width:min(300px,calc(100vw - 24px));max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);box-shadow:0 8px 28px #0F172A26;padding:10px;color:var(--ink);font-size:10px;pointer-events:auto}.gantt-comment-preview h4{font-size:10px;margin:0 0 7px}.gantt-comment-item{border-top:1px solid var(--line);padding:7px 0 2px}.gantt-comment-meta{font-size:8px;color:var(--muted);margin-bottom:4px}.gantt-comment-body{white-space:pre-wrap;overflow-wrap:anywhere;max-height:80px;overflow:auto;line-height:1.45}
 .gantt-row-label{overflow:visible!important}.gantt-quick-popover{position:fixed;left:0;right:auto;top:auto;z-index:50;max-width:calc(100vw - 24px)}.busy .gantt-quick-popover{pointer-events:none;opacity:.65}
 .gantt-label-hit[draggable=true],.swimlane-collapse[data-gantt-drag-id]{cursor:grab}.gantt-label-hit[draggable=true]:active,.swimlane-collapse[data-gantt-drag-id]:active{cursor:grabbing}.gantt-label-hit[draggable=true]::before,.swimlane-collapse[data-gantt-drag-id]::before{content:'⠿';flex:0 0 auto;color:var(--muted);font-size:11px;line-height:1}.gantt-row.gantt-drop-before{box-shadow:inset 0 2px var(--primary)}.gantt-row.gantt-drop-after{box-shadow:inset 0 -2px var(--primary)}.gantt-row.gantt-drop-parent .gantt-row-label{outline:2px dashed var(--primary);outline-offset:-3px;background:var(--primary-soft)!important}.gantt-row.gantt-drop-invalid .gantt-row-label{outline:2px dashed var(--red);outline-offset:-3px}.gantt-unparent-drop{border:1px dashed var(--line)!important;border-radius:5px;background:var(--surface)!important;color:var(--muted)!important;font-size:9px!important;white-space:nowrap}.gantt-unparent-drop.gantt-drop-unparent{border-color:var(--primary)!important;background:var(--primary-soft)!important;color:var(--primary)!important}.gantt-unparent-drop.gantt-drop-invalid{border-color:var(--red)!important;color:var(--red)!important}.gantt-drag-help{font-size:9px;color:var(--muted)}
-.gantt-story-toggle{flex:0 0 14px;width:14px;height:18px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--muted);font-size:11px;line-height:1}.gantt-story-toggle:hover,.gantt-story-toggle:focus-visible{border-color:var(--line);background:var(--primary-soft);color:var(--primary);outline:none}.gantt-row-label.has-story-toggle .gantt-label-hit{padding-left:var(--row-label-indent,0px)}
+.gantt-story-toggle{flex:0 0 18px;width:18px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line);border-radius:4px;background:var(--surface-muted);color:var(--ink);font-size:12px;line-height:1;cursor:pointer}.gantt-story-toggle:hover,.gantt-story-toggle:focus-visible{border-color:var(--primary);background:var(--primary-soft);color:var(--primary);outline:none}.gantt-row-label.has-story-toggle .gantt-label-hit{padding-left:var(--row-label-indent,0px)}
+.gantt-comment-preview{pointer-events:none}
 </style>
 
 </head>
@@ -315,7 +316,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   const uiStorageKey = 'sheetflow.ui.v1';
   const noEpicLaneKey = '__no_epic__';
   const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], collapsedEpics: {}, collapsedGanttStories: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
-  let edited = null, initialForm = '', draggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, toastTimer, epicDateFormValues = null;
+  let edited = null, initialForm = '', draggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.collapsedGanttStories = ui.collapsedGanttStories || {}; state.swimlanes = ui.swimlanes !== false; state.ganttLabelWidth = clampGanttLabelWidth(ui.ganttLabelWidth || 260); } catch (ignore) { state.collapsedEpics = {}; state.collapsedGanttStories = {}; }
@@ -330,6 +331,10 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (!id) return;
     if (collapsed) state.collapsedGanttStories[id] = true; else delete state.collapsedGanttStories[id];
     saveUiState();
+  }
+  function cancelGanttStoryClick() {
+    if (ganttStoryClickTimer) clearTimeout(ganttStoryClickTimer.timer);
+    ganttStoryClickTimer = null;
   }
   function setSwimlanes(enabled) {
     state.swimlanes = Boolean(enabled);
@@ -774,10 +779,11 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const renderRows = (items, topOffset, laneParentId = '') => ganttHierarchyRows(items, laneParentId).map(({ issue, depth }, row) => {
       const summary = issue.type === 'Epic';
       const schedule = summary ? C.epicScheduleRange(issue.id, state.issues) : issue;
-      const hasStoryChildren = issue.type === 'Story' && items.some(child => child.parentId === issue.id);
+      const storyChildCount = issue.type === 'Story' ? items.filter(child => child.parentId === issue.id).length : 0;
+      const hasStoryChildren = storyChildCount > 0;
       const storyCollapsed = hasStoryChildren && state.collapsedGanttStories[issue.id];
-      const storyToggle = hasStoryChildren ? `<button type="button" class="gantt-story-toggle" data-toggle-gantt-story="${escape(issue.id)}" aria-expanded="${!storyCollapsed}" aria-label="${storyCollapsed ? 'Expand' : 'Collapse'} tasks under ${escape(issue.summary)}" title="${storyCollapsed ? 'Expand' : 'Collapse'} tasks under this story">${storyCollapsed ? '+' : '−'}</button>` : '';
-      return `<div class="gantt-row" data-gantt-row-id="${escape(issue.id)}"><div class="gantt-row-label ${hasStoryChildren ? 'has-story-toggle' : ''}" data-open="${escape(issue.id)}" data-preview-id="${escape(issue.id)}" style="--row-depth:${depth};--row-label-indent:${Math.max(0, depth * 12 - 12)}px">${storyToggle}<button type="button" class="gantt-label-hit" draggable="true" data-gantt-drag-id="${escape(issue.id)}" data-open="${escape(issue.id)}" aria-label="Open ${escape(issue.id)}: ${escape(issue.summary)}. Drag to reorder or change parent.">${typeIcon(issue.type)}${taskTypeBadge(issue.taskTypeId)}<span class="gantt-label-copy"><strong>${escape(issue.id)}</strong><span class="gantt-label-summary">${escape(issue.summary)}</span></span></button>${ganttAddButton(issue)}</div><div class="gantt-resize-gutter" aria-hidden="true"></div>${renderTrack(issue, topOffset + row * 45 + 22, schedule, summary)}</div>`;
+      const storyToggle = hasStoryChildren ? `<button type="button" class="gantt-story-toggle" data-toggle-gantt-story="${escape(issue.id)}" aria-expanded="${!storyCollapsed}" aria-label="${storyCollapsed ? 'Expand' : 'Collapse'} ${storyChildCount} child work items under ${escape(issue.summary)}" title="${storyCollapsed ? 'Expand' : 'Collapse'} ${storyChildCount} child work items">${storyCollapsed ? '+' : '−'}</button>` : '';
+      return `<div class="gantt-row" data-gantt-row-id="${escape(issue.id)}"><div class="gantt-row-label ${hasStoryChildren ? 'has-story-toggle' : ''}" data-open="${escape(issue.id)}" data-preview-id="${escape(issue.id)}" style="--row-depth:${depth};--row-label-indent:${Math.max(0, depth * 12 - 16)}px">${storyToggle}<button type="button" class="gantt-label-hit" draggable="true" data-gantt-drag-id="${escape(issue.id)}" data-open="${escape(issue.id)}" ${hasStoryChildren ? `aria-expanded="${!storyCollapsed}"` : ''} aria-label="${hasStoryChildren ? 'Toggle child work items for ' : 'Open '}${escape(issue.id)}: ${escape(issue.summary)}. Double-click to edit; drag to reorder or change parent.">${typeIcon(issue.type)}${taskTypeBadge(issue.taskTypeId)}<span class="gantt-label-copy"><strong>${escape(issue.id)}</strong><span class="gantt-label-summary">${escape(issue.summary)}</span></span></button>${ganttAddButton(issue)}</div><div class="gantt-resize-gutter" aria-hidden="true"></div>${renderTrack(issue, topOffset + row * 45 + 22, schedule, summary)}</div>`;
     }).join('');
     let rows = '', rowsHeight = 0;
     if (state.swimlanes) {
@@ -907,11 +913,13 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $('#close-help').addEventListener('click', () => $('#help-dialog').close());
   $('#view-content').addEventListener('click', event => {
     if (state.busy || Date.now() < suppressClickUntil) return;
+    const storyLabel = event.target.closest('.gantt-row-label.has-story-toggle');
+    if (ganttStoryClickTimer && (!storyLabel || storyLabel.dataset.open !== ganttStoryClickTimer.id || event.detail > 1)) cancelGanttStoryClick();
     if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover();
     const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-gantt-add]');
     if (!target) return;
     if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
-    else if (target.hasAttribute('data-toggle-gantt-story')) { const id = target.dataset.toggleGanttStory; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }
+    else if (target.hasAttribute('data-toggle-gantt-story')) { cancelGanttStoryClick(); const id = target.dataset.toggleGanttStory; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }
     else if (target.hasAttribute('data-gantt-add')) {
       hideGanttCommentPreview();
       const old = document.querySelector('.gantt-quick-popover');
@@ -933,6 +941,12 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     else if (target.hasAttribute('data-timeline')) {
       const next = target.dataset.timeline === 'today' ? C.addDays(today(), -7) : C.addDays(state.timelineStart, Number(target.dataset.timeline) * 28);
       if (C.validDate(next) && next <= '2200-01-01') { state.timelineStart = next; render(); }
+    } else if (state.view === 'gantt' && storyLabel && !target.closest('.gantt-story-toggle, .gantt-add-button')) {
+      if (event.detail === 1) {
+        cancelGanttStoryClick(); const id = storyLabel.dataset.open;
+        ganttStoryClickTimer = { id, timer: setTimeout(() => { ganttStoryClickTimer = null; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }, 350) };
+      }
+      return;
     } else if (state.view === 'gantt' && target.closest('.gantt-row-label, .gantt-bar') && !target.closest('.swimlane-edit')) return;
     else openIssue(target.dataset.open || target.dataset.issue || target.dataset.bar);
   });
@@ -943,6 +957,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (state.view !== 'gantt') return;
     const target = event.target.closest('.gantt-row-label, .gantt-bar');
     if (!target || event.target.closest('.gantt-add-button, .swimlane-collapse')) return;
+    cancelGanttStoryClick();
     const id = target.dataset.open || target.dataset.bar; if (!id) return;
     event.preventDefault(); openIssue(id);
   });

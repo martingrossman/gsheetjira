@@ -40,7 +40,7 @@
   const uiStorageKey = 'sheetflow.ui.v1';
   const noEpicLaneKey = '__no_epic__';
   const state = { issues: [], comments: {}, settings: [], drafts: {}, quickQueue: [], collapsedEpics: {}, collapsedGanttStories: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
-  let edited = null, initialForm = '', draggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, toastTimer, epicDateFormValues = null;
+  let edited = null, initialForm = '', draggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.collapsedGanttStories = ui.collapsedGanttStories || {}; state.swimlanes = ui.swimlanes !== false; state.ganttLabelWidth = clampGanttLabelWidth(ui.ganttLabelWidth || 260); } catch (ignore) { state.collapsedEpics = {}; state.collapsedGanttStories = {}; }
@@ -55,6 +55,10 @@
     if (!id) return;
     if (collapsed) state.collapsedGanttStories[id] = true; else delete state.collapsedGanttStories[id];
     saveUiState();
+  }
+  function cancelGanttStoryClick() {
+    if (ganttStoryClickTimer) clearTimeout(ganttStoryClickTimer.timer);
+    ganttStoryClickTimer = null;
   }
   function setSwimlanes(enabled) {
     state.swimlanes = Boolean(enabled);
@@ -499,10 +503,11 @@
     const renderRows = (items, topOffset, laneParentId = '') => ganttHierarchyRows(items, laneParentId).map(({ issue, depth }, row) => {
       const summary = issue.type === 'Epic';
       const schedule = summary ? C.epicScheduleRange(issue.id, state.issues) : issue;
-      const hasStoryChildren = issue.type === 'Story' && items.some(child => child.parentId === issue.id);
+      const storyChildCount = issue.type === 'Story' ? items.filter(child => child.parentId === issue.id).length : 0;
+      const hasStoryChildren = storyChildCount > 0;
       const storyCollapsed = hasStoryChildren && state.collapsedGanttStories[issue.id];
-      const storyToggle = hasStoryChildren ? `<button type="button" class="gantt-story-toggle" data-toggle-gantt-story="${escape(issue.id)}" aria-expanded="${!storyCollapsed}" aria-label="${storyCollapsed ? 'Expand' : 'Collapse'} tasks under ${escape(issue.summary)}" title="${storyCollapsed ? 'Expand' : 'Collapse'} tasks under this story">${storyCollapsed ? '+' : '−'}</button>` : '';
-      return `<div class="gantt-row" data-gantt-row-id="${escape(issue.id)}"><div class="gantt-row-label ${hasStoryChildren ? 'has-story-toggle' : ''}" data-open="${escape(issue.id)}" data-preview-id="${escape(issue.id)}" style="--row-depth:${depth};--row-label-indent:${Math.max(0, depth * 12 - 12)}px">${storyToggle}<button type="button" class="gantt-label-hit" draggable="true" data-gantt-drag-id="${escape(issue.id)}" data-open="${escape(issue.id)}" aria-label="Open ${escape(issue.id)}: ${escape(issue.summary)}. Drag to reorder or change parent.">${typeIcon(issue.type)}${taskTypeBadge(issue.taskTypeId)}<span class="gantt-label-copy"><strong>${escape(issue.id)}</strong><span class="gantt-label-summary">${escape(issue.summary)}</span></span></button>${ganttAddButton(issue)}</div><div class="gantt-resize-gutter" aria-hidden="true"></div>${renderTrack(issue, topOffset + row * 45 + 22, schedule, summary)}</div>`;
+      const storyToggle = hasStoryChildren ? `<button type="button" class="gantt-story-toggle" data-toggle-gantt-story="${escape(issue.id)}" aria-expanded="${!storyCollapsed}" aria-label="${storyCollapsed ? 'Expand' : 'Collapse'} ${storyChildCount} child work items under ${escape(issue.summary)}" title="${storyCollapsed ? 'Expand' : 'Collapse'} ${storyChildCount} child work items">${storyCollapsed ? '+' : '−'}</button>` : '';
+      return `<div class="gantt-row" data-gantt-row-id="${escape(issue.id)}"><div class="gantt-row-label ${hasStoryChildren ? 'has-story-toggle' : ''}" data-open="${escape(issue.id)}" data-preview-id="${escape(issue.id)}" style="--row-depth:${depth};--row-label-indent:${Math.max(0, depth * 12 - 16)}px">${storyToggle}<button type="button" class="gantt-label-hit" draggable="true" data-gantt-drag-id="${escape(issue.id)}" data-open="${escape(issue.id)}" ${hasStoryChildren ? `aria-expanded="${!storyCollapsed}"` : ''} aria-label="${hasStoryChildren ? 'Toggle child work items for ' : 'Open '}${escape(issue.id)}: ${escape(issue.summary)}. Double-click to edit; drag to reorder or change parent.">${typeIcon(issue.type)}${taskTypeBadge(issue.taskTypeId)}<span class="gantt-label-copy"><strong>${escape(issue.id)}</strong><span class="gantt-label-summary">${escape(issue.summary)}</span></span></button>${ganttAddButton(issue)}</div><div class="gantt-resize-gutter" aria-hidden="true"></div>${renderTrack(issue, topOffset + row * 45 + 22, schedule, summary)}</div>`;
     }).join('');
     let rows = '', rowsHeight = 0;
     if (state.swimlanes) {
@@ -632,11 +637,13 @@
   $('#close-help').addEventListener('click', () => $('#help-dialog').close());
   $('#view-content').addEventListener('click', event => {
     if (state.busy || Date.now() < suppressClickUntil) return;
+    const storyLabel = event.target.closest('.gantt-row-label.has-story-toggle');
+    if (ganttStoryClickTimer && (!storyLabel || storyLabel.dataset.open !== ganttStoryClickTimer.id || event.detail > 1)) cancelGanttStoryClick();
     if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover();
     const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-gantt-add]');
     if (!target) return;
     if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
-    else if (target.hasAttribute('data-toggle-gantt-story')) { const id = target.dataset.toggleGanttStory; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }
+    else if (target.hasAttribute('data-toggle-gantt-story')) { cancelGanttStoryClick(); const id = target.dataset.toggleGanttStory; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }
     else if (target.hasAttribute('data-gantt-add')) {
       hideGanttCommentPreview();
       const old = document.querySelector('.gantt-quick-popover');
@@ -658,6 +665,12 @@
     else if (target.hasAttribute('data-timeline')) {
       const next = target.dataset.timeline === 'today' ? C.addDays(today(), -7) : C.addDays(state.timelineStart, Number(target.dataset.timeline) * 28);
       if (C.validDate(next) && next <= '2200-01-01') { state.timelineStart = next; render(); }
+    } else if (state.view === 'gantt' && storyLabel && !target.closest('.gantt-story-toggle, .gantt-add-button')) {
+      if (event.detail === 1) {
+        cancelGanttStoryClick(); const id = storyLabel.dataset.open;
+        ganttStoryClickTimer = { id, timer: setTimeout(() => { ganttStoryClickTimer = null; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }, 350) };
+      }
+      return;
     } else if (state.view === 'gantt' && target.closest('.gantt-row-label, .gantt-bar') && !target.closest('.swimlane-edit')) return;
     else openIssue(target.dataset.open || target.dataset.issue || target.dataset.bar);
   });
@@ -668,6 +681,7 @@
     if (state.view !== 'gantt') return;
     const target = event.target.closest('.gantt-row-label, .gantt-bar');
     if (!target || event.target.closest('.gantt-add-button, .swimlane-collapse')) return;
+    cancelGanttStoryClick();
     const id = target.dataset.open || target.dataset.bar; if (!id) return;
     event.preventDefault(); openIssue(id);
   });
