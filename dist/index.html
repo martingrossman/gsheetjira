@@ -67,6 +67,7 @@
 .sheet-tools{display:flex;justify-content:space-between;align-items:center;gap:10px}.sheet-tool-actions{display:flex;align-items:center;gap:14px}.sheet-tool-actions .button{height:28px;padding:0 9px;font-size:9px}.sheet-tool-actions .button.selected{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}.sheet-id-cell{display:flex;align-items:center;gap:5px;padding-left:calc(var(--sheet-depth,0)*14px);box-sizing:border-box}.sheet-tree-toggle,.sheet-tree-spacer{flex:0 0 16px;width:16px;height:18px}.sheet-tree-toggle{display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line);border-radius:4px;background:var(--surface-muted);color:var(--muted);font-size:11px;line-height:1;cursor:pointer}.sheet-tree-toggle:hover,.sheet-tree-toggle:focus-visible{border-color:var(--primary);background:var(--primary-soft);color:var(--primary);outline:none}.sheet-row-controls{display:inline-flex;align-items:center;gap:1px;flex:0 0 auto}.sheet-row-controls button{width:17px;height:20px;min-width:17px;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--muted);font-size:10px;line-height:1;cursor:pointer}.sheet-row-controls button:hover:not(:disabled),.sheet-row-controls button:focus-visible{border-color:var(--line);background:var(--surface-muted);color:var(--primary);outline:none}.sheet-row-controls button:disabled{opacity:.35;cursor:not-allowed}.sheet-row-grip[draggable=true]{cursor:grab}.sheet-row-grip[draggable=true]:active{cursor:grabbing}.sheet-row-grip[aria-disabled=true]{cursor:not-allowed}.sheet-issue-row.sheet-dragging{opacity:.45}.sheet-issue-row.sheet-drop-before td{box-shadow:inset 0 2px var(--primary)}.sheet-issue-row.sheet-drop-after td{box-shadow:inset 0 -2px var(--primary)}
 .filter-menu{position:relative;flex:0 0 auto}.filter-menu>summary{list-style:none;display:flex;align-items:center;min-width:100px;height:32px;padding:0 25px 0 10px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:10px;color:var(--ink);cursor:pointer;white-space:nowrap}.filter-menu>summary::-webkit-details-marker{display:none}.filter-menu>summary:after{content:'⌄';margin-left:auto;margin-right:-16px;color:var(--muted)}.filter-menu[open]>summary{border-color:var(--primary)}.filter-menu-options{position:absolute;top:calc(100% + 5px);left:0;z-index:25;min-width:150px;padding:8px;display:grid;gap:2px;border:1px solid var(--line);border-radius:6px;background:var(--surface);box-shadow:0 8px 24px #0F172A1A}.filter-option{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;font-size:10px;color:var(--ink);cursor:pointer}.filter-option:hover{background:var(--surface-muted)}.filter-option input{accent-color:var(--primary)}.filters input[type=date]{width:128px;height:32px;padding:0 5px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:9px}.date-filter{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--muted);white-space:nowrap}.active-filter-chips{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:-9px 0 12px}.filter-chip{display:inline-flex;align-items:center;gap:7px;max-width:min(260px,90vw);padding:4px 7px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--muted);font-size:9px}.filter-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.filter-chip b{font-size:12px;line-height:10px;color:var(--muted);font-weight:500}.filter-chip:hover{border-color:var(--primary);color:var(--primary)}
 .saved-view-bar{display:flex;align-items:center;gap:8px;padding:0 0 12px;color:var(--muted);font-size:9px}.saved-view-bar label{display:flex;align-items:center;gap:7px}.saved-view-bar select{height:30px;min-width:160px;max-width:250px;padding:0 8px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:10px}.saved-view-bar .button{height:30px;padding:0 10px;font-size:9px}.saved-view-bar>span{margin-left:auto}.saved-view-dialog{width:480px}.saved-view-body{padding:23px 25px;display:grid;gap:14px;color:var(--muted);font-size:12px}.saved-view-body .field{margin:0;color:var(--ink)}
+.sheet-columns-menu{position:relative;flex:0 0 auto}.sheet-columns-menu>summary{list-style:none;display:flex;align-items:center;min-width:91px;height:28px;padding:0 8px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:9px;color:var(--muted);cursor:pointer;white-space:nowrap}.sheet-columns-menu>summary::-webkit-details-marker{display:none}.sheet-columns-menu[open]>summary{border-color:var(--primary);color:var(--primary)}.sheet-column-options{position:absolute;top:calc(100% + 5px);right:0;z-index:25;width:240px;max-height:min(360px,65vh);overflow:auto;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);box-shadow:0 8px 24px #0F172A1A}.sheet-column-option{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 5px;border-radius:4px}.sheet-column-option:hover{background:var(--surface-muted)}.sheet-column-option label{display:flex;align-items:center;gap:7px;min-width:0;font-size:9px;color:var(--ink);cursor:pointer}.sheet-column-option label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sheet-column-option input{accent-color:var(--primary)}.sheet-column-option>span{display:flex;gap:2px}.sheet-column-option button{width:19px;height:20px;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--muted);font-size:10px}.sheet-column-option button:hover:not(:disabled),.sheet-column-option button:focus-visible{border-color:var(--line);background:white;color:var(--primary);outline:none}.sheet-column-option button:disabled{opacity:.3;cursor:not-allowed}
 @media(max-width:520px){.quick-entry #bulk-create-open{padding:0 7px}.bulk-create-body{padding:20px}.saved-view-bar{flex-wrap:wrap}.saved-view-bar>span{display:none}.saved-view-bar select{max-width:170px;min-width:140px}}
 </style>
 
@@ -353,7 +354,16 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   const uiStorageKey = 'sheetflow.ui.v1';
   const savedViewsStorageKey = 'sheetflow.saved-views.v1';
   const noEpicLaneKey = '__no_epic__';
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], savedViews: [], activeSavedView: '', collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const defaultSheetColumnOrder = ['id', 'type', 'taskTypeId', 'parentId', 'summary', 'status', 'priority', 'assignee', 'startDate', 'dueDate', 'progress', 'estimate', 'sprint'];
+  function normalizeSheetColumnOrder(keys) {
+    const available = new Set(['taskTypeId', ...C.fields.map(field => field.key)]), seen = new Set();
+    const order = (Array.isArray(keys) ? keys : []).filter(key => available.has(key) && !seen.has(key) && seen.add(key));
+    if (!order.length) return defaultSheetColumnOrder.slice();
+    if (order.includes('id')) order.splice(order.indexOf('id'), 1);
+    order.unshift('id');
+    return order;
+  }
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], savedViews: [], activeSavedView: '', visibleColumns: defaultSheetColumnOrder.slice(), collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
@@ -361,11 +371,11 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   try { state.bulkDraft = JSON.parse(localStorage.getItem(bulkDraftStorageKey) || 'null'); } catch (ignore) { state.bulkDraft = null; }
   try { state.undoStack = JSON.parse(localStorage.getItem(undoStorageKey) || '[]') || []; } catch (ignore) { state.undoStack = []; }
   try { const saved = JSON.parse(localStorage.getItem(savedViewsStorageKey) || '[]'); state.savedViews = Array.isArray(saved) ? saved.filter(view => view && view.id && view.name && view.state) : []; } catch (ignore) { state.savedViews = []; }
-  try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.collapsedGanttStories = ui.collapsedGanttStories || {}; state.collapsedSheetParents = ui.collapsedSheetParents || {}; state.swimlanes = ui.swimlanes !== false; state.ganttLabelWidth = clampGanttLabelWidth(ui.ganttLabelWidth || 260); } catch (ignore) { state.collapsedEpics = {}; state.collapsedGanttStories = {}; state.collapsedSheetParents = {}; }
+  try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.collapsedGanttStories = ui.collapsedGanttStories || {}; state.collapsedSheetParents = ui.collapsedSheetParents || {}; state.visibleColumns = normalizeSheetColumnOrder(ui.visibleColumns || defaultSheetColumnOrder); state.swimlanes = ui.swimlanes !== false; state.ganttLabelWidth = clampGanttLabelWidth(ui.ganttLabelWidth || 260); } catch (ignore) { state.collapsedEpics = {}; state.collapsedGanttStories = {}; state.collapsedSheetParents = {}; state.visibleColumns = defaultSheetColumnOrder.slice(); }
   function clampGanttLabelWidth(value) { const max = Math.min(480, Math.max(1, window.innerWidth * 0.6)), min = Math.min(180, max); return Math.round(Math.max(min, Math.min(max, Number(value) || 260))); }
-  function saveUiState() { localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, collapsedGanttStories: state.collapsedGanttStories, collapsedSheetParents: state.collapsedSheetParents, swimlanes: state.swimlanes, ganttLabelWidth: state.ganttLabelWidth })); }
+  function saveUiState() { localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, collapsedGanttStories: state.collapsedGanttStories, collapsedSheetParents: state.collapsedSheetParents, visibleColumns: state.visibleColumns, swimlanes: state.swimlanes, ganttLabelWidth: state.ganttLabelWidth })); }
   function saveViewSnapshot() {
-    return { view: state.view, query: state.query, types: state.types.slice(), priority: state.priority, tag: state.tag, startAfter: state.startAfter, dueBefore: state.dueBefore, assignee: state.assignee, status: state.status, sprint: state.sprint, epic: state.epic, sort: state.sort, ascending: state.ascending, allColumns: state.allColumns, swimlanes: state.swimlanes, collapsedEpics: { ...state.collapsedEpics }, collapsedSheetParents: { ...state.collapsedSheetParents }, collapsedGanttStories: { ...state.collapsedGanttStories }, ganttLabelWidth: state.ganttLabelWidth, zoom: state.zoom, timelineStart: state.timelineStart };
+    return { view: state.view, query: state.query, types: state.types.slice(), priority: state.priority, tag: state.tag, startAfter: state.startAfter, dueBefore: state.dueBefore, assignee: state.assignee, status: state.status, sprint: state.sprint, epic: state.epic, sort: state.sort, ascending: state.ascending, visibleColumns: state.visibleColumns.slice(), swimlanes: state.swimlanes, collapsedEpics: { ...state.collapsedEpics }, collapsedSheetParents: { ...state.collapsedSheetParents }, collapsedGanttStories: { ...state.collapsedGanttStories }, ganttLabelWidth: state.ganttLabelWidth, zoom: state.zoom, timelineStart: state.timelineStart };
   }
   function renderSavedViews() {
     const select = $('#saved-view-select');
@@ -386,7 +396,9 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     state.priority = C.priorities.includes(view.priority) ? view.priority : ''; state.tag = String(view.tag || '');
     state.startAfter = C.validDate(view.startAfter) ? view.startAfter : ''; state.dueBefore = C.validDate(view.dueBefore) ? view.dueBefore : '';
     state.assignee = String(view.assignee || ''); state.status = C.statuses.includes(view.status) ? view.status : ''; state.sprint = String(view.sprint || ''); state.epic = String(view.epic || '');
-    state.sort = view.sort === 'taskTypeId' || C.fields.some(field => field.key === view.sort) ? view.sort : 'rank'; state.ascending = view.ascending !== false; state.allColumns = Boolean(view.allColumns); state.swimlanes = view.swimlanes !== false;
+    state.sort = view.sort === 'taskTypeId' || C.fields.some(field => field.key === view.sort) ? view.sort : 'rank'; state.ascending = view.ascending !== false;
+    state.visibleColumns = normalizeSheetColumnOrder(Array.isArray(view.visibleColumns) ? view.visibleColumns : view.allColumns ? ['id', 'type', 'taskTypeId', ...C.fields.map(field => field.key)] : defaultSheetColumnOrder);
+    state.swimlanes = view.swimlanes !== false;
     state.collapsedEpics = view.collapsedEpics && typeof view.collapsedEpics === 'object' ? { ...view.collapsedEpics } : {};
     state.collapsedSheetParents = view.collapsedSheetParents && typeof view.collapsedSheetParents === 'object' ? { ...view.collapsedSheetParents } : {};
     state.collapsedGanttStories = view.collapsedGanttStories && typeof view.collapsedGanttStories === 'object' ? { ...view.collapsedGanttStories } : {};
@@ -436,6 +448,34 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (!id) return;
     if (collapsed) state.collapsedSheetParents[id] = true; else delete state.collapsedSheetParents[id];
     saveUiState();
+  }
+  function sheetColumnDefinitions() {
+    const definitions = new Map(C.fields.map(field => [field.key, field]));
+    definitions.set('taskTypeId', { key: 'taskTypeId', label: 'Activity Type', kind: 'text' });
+    return definitions;
+  }
+  function sheetColumnMenu() {
+    const definitions = sheetColumnDefinitions(), selected = normalizeSheetColumnOrder(state.visibleColumns);
+    const orderedKeys = [...selected, ...defaultSheetColumnOrder.filter(key => !selected.includes(key)), ...C.fields.map(field => field.key).filter(key => !selected.includes(key) && !defaultSheetColumnOrder.includes(key))];
+    return `<details class="sheet-columns-menu" ${state.sheetColumnsMenuOpen ? 'open' : ''}><summary>Columns (${selected.length})</summary><div class="sheet-column-options" role="group" aria-label="Choose and order Sheet columns">${orderedKeys.map(key => {
+      const field = definitions.get(key), index = selected.indexOf(key), checked = index >= 0, fixed = key === 'id';
+      return `<div class="sheet-column-option"><label><input type="checkbox" data-sheet-column-toggle="${escape(key)}" ${checked ? 'checked' : ''} ${fixed ? 'disabled' : ''}><span>${escape(field?.label || key)}</span></label><span><button type="button" data-sheet-column-move="up" data-sheet-column-key="${escape(key)}" aria-label="Move ${escape(field?.label || key)} column left" ${fixed || !checked || index <= 1 ? 'disabled' : ''}>↑</button><button type="button" data-sheet-column-move="down" data-sheet-column-key="${escape(key)}" aria-label="Move ${escape(field?.label || key)} column right" ${fixed || !checked || index < 0 || index >= selected.length - 1 ? 'disabled' : ''}>↓</button></span></div>`;
+    }).join('')}</div></details>`;
+  }
+  function toggleSheetColumn(key, checked) {
+    if (key === 'id') return;
+    state.sheetColumnsMenuOpen = Boolean($('.sheet-columns-menu')?.open);
+    const order = normalizeSheetColumnOrder(state.visibleColumns);
+    state.visibleColumns = normalizeSheetColumnOrder(checked ? [...order, key] : order.filter(item => item !== key));
+    saveUiState(); render(); $(`[data-sheet-column-toggle="${CSS.escape(key)}"]`)?.focus();
+  }
+  function moveSheetColumn(key, direction) {
+    state.sheetColumnsMenuOpen = Boolean($('.sheet-columns-menu')?.open);
+    const order = normalizeSheetColumnOrder(state.visibleColumns), index = order.indexOf(key), next = index + (direction === 'up' ? -1 : 1);
+    if (index < 1 || next < 1 || next >= order.length) return;
+    [order[index], order[next]] = [order[next], order[index]];
+    state.visibleColumns = normalizeSheetColumnOrder(order); saveUiState(); render();
+    $(`[data-sheet-column-key="${CSS.escape(key)}"][data-sheet-column-move="${direction}"]`)?.focus();
   }
   function cancelGanttStoryClick() {
     if (ganttStoryClickTimer) clearTimeout(ganttStoryClickTimer.timer);
@@ -895,9 +935,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     return `<div class="swimlane-header ${extraClass}"><button type="button" class="swimlane-collapse" data-toggle-lane="${escape(key)}" ${epic && extraClass.includes('gantt-lane-title') ? `draggable="true" data-gantt-drag-id="${escape(epic.id)}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"` : ''} aria-expanded="${!collapsed}" aria-label="${collapsed ? 'Expand' : 'Collapse'} ${escape(lane.label)}${dragHint}"><span class="epic-dot"></span>${epic ? `<span class="swimlane-epic-id">${typeIcon('Epic')}${escape(epic.id)}</span>${taskTypeBadge(epic.taskTypeId)}` : ''}<strong>${escape(lane.label)}</strong>${epic ? `<span class="status-badge" style="--status-bg:${statusBg[statusIndex] || '#F1F5F9'};--status-color:${statusColors[statusIndex] || '#64748B'}">${escape(epic.status)}</span>` : ''}${range}<span class="swimlane-progress">${workItems.length} items · ${progress}% complete</span><span class="swimlane-toggle" aria-hidden="true">${collapsed ? '+' : '−'}</span></button>${epic ? `<button type="button" class="swimlane-edit" data-open="${escape(epic.id)}" aria-label="Edit epic ${escape(epic.id)}" title="Edit epic">Edit</button>` : ''}</div>`;
   }
   function renderSheet(issues) {
-    const primary = ['id', 'type', 'parentId', 'summary', 'status', 'priority', 'assignee', 'startDate', 'dueDate', 'progress', 'estimate', 'sprint'];
-    const columns = C.fields.filter(f => state.allColumns || primary.includes(f.key));
-    columns.splice(Math.min(2, columns.length), 0, { key: 'taskTypeId', label: 'Activity Type', kind: 'text' });
+    const definitions = sheetColumnDefinitions(), columns = normalizeSheetColumnOrder(state.visibleColumns).map(key => definitions.get(key)).filter(Boolean);
     const list = sortSheetItems(issues);
     const manualOrder = state.sort === 'rank' && state.ascending;
     const renderRow = node => {
@@ -910,7 +948,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
         return `<tbody class="sheet-lane-group"><tr class="sheet-lane-row"><td colspan="${columns.length}">${renderSwimlaneHeader(lane, 'sheet-lane-title')}</td></tr>${collapsed ? '' : sheetHierarchyRows(lane.items, lane.id).map(renderRow).join('')}</tbody>`;
       }).join('')
       : `<tbody>${sheetHierarchyRows(list).map(renderRow).join('')}</tbody>`;
-    $('#view-content').innerHTML = `<div class="sheet-tools"><span>Every detail, in one place.</span><div class="sheet-tool-actions"><button type="button" class="button secondary ${manualOrder ? 'selected' : ''}" data-sheet-manual aria-pressed="${manualOrder}" title="Enable rank-based order to move rows">Manual order</button><label><input id="all-columns" type="checkbox" ${state.allColumns ? 'checked' : ''}> Show all ${C.fields.length} columns</label></div></div><div class="table-wrap"><table class="issue-table"><thead><tr>${columns.map(field => `<th><button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button></th>`).join('')}</tr></thead>${body}</table></div>`;
+    $('#view-content').innerHTML = `<div class="sheet-tools"><span>Every detail, in one place.</span><div class="sheet-tool-actions"><button type="button" class="button secondary ${manualOrder ? 'selected' : ''}" data-sheet-manual aria-pressed="${manualOrder}" title="Enable rank-based order to move rows">Manual order</button>${sheetColumnMenu()}</div></div><div class="table-wrap"><table class="issue-table"><thead><tr>${columns.map(field => `<th><button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button></th>`).join('')}</tr></thead>${body}</table></div>`;
   }
   function sortSheetItems(items) {
     return items.slice().sort((a, b) => {
@@ -1382,12 +1420,13 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $('#close-help').addEventListener('click', () => $('#help-dialog').close());
   $('#view-content').addEventListener('click', event => {
     if (state.busy || Date.now() < suppressClickUntil) return;
+    if (state.view === 'sheet' && event.target.closest('.sheet-columns-menu > summary')) { state.sheetColumnsMenuOpen = !state.sheetColumnsMenuOpen; return; }
     const sheetMove = event.target.closest('[data-sheet-move]');
     if (state.view === 'sheet' && sheetMove) { moveSheetWithKeyboard(sheetMove.dataset.sheetMoveId, sheetMove.dataset.sheetMove); return; }
     const storyLabel = event.target.closest('.gantt-row-label.has-story-toggle');
     if (ganttStoryClickTimer && (!storyLabel || storyLabel.dataset.open !== ganttStoryClickTimer.id || event.detail > 1)) cancelGanttStoryClick();
     if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover();
-    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-sheet-manual], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-toggle-sheet-parent], [data-gantt-add]');
+    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-sheet-manual], [data-sheet-column-move], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-toggle-sheet-parent], [data-gantt-add]');
     if (!target) return;
     if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
     else if (target.hasAttribute('data-toggle-gantt-story')) { cancelGanttStoryClick(); const id = target.dataset.toggleGanttStory; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }
@@ -1411,6 +1450,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     else if (target.hasAttribute('data-clear')) clearFilters();
     else if (target.hasAttribute('data-sort')) { state.ascending = state.sort === target.dataset.sort ? !state.ascending : true; state.sort = target.dataset.sort; render(); }
     else if (target.hasAttribute('data-sheet-manual')) { state.sort = 'rank'; state.ascending = true; render(); }
+    else if (target.hasAttribute('data-sheet-column-move')) moveSheetColumn(target.dataset.sheetColumnKey, target.dataset.sheetColumnMove);
     else if (target.hasAttribute('data-timeline')) {
       const next = target.dataset.timeline === 'today' ? C.addDays(today(), -7) : C.addDays(state.timelineStart, Number(target.dataset.timeline) * 28);
       if (C.validDate(next) && next <= '2200-01-01') { state.timelineStart = next; render(); }
@@ -1461,7 +1501,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   });
   $('#view-content').addEventListener('change', async event => {
     const target = event.target;
-    if (target.id === 'all-columns') { state.allColumns = target.checked; render(); return; }
+    if (target.matches('[data-sheet-column-toggle]')) { toggleSheetColumn(target.dataset.sheetColumnToggle, target.checked); return; }
     if (target.id === 'timeline-date') { if (C.validDate(target.value) && target.checkValidity()) { state.timelineStart = target.value; render(); } return; }
     if (target.id === 'timeline-zoom') { state.zoom = target.value; render(); return; }
     if (!target.dataset.field || state.busy) return;
