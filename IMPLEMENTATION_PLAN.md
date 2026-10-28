@@ -1,6 +1,6 @@
 # Implementation review and completion plan
 
-Reviewed: 2026-10-28. Source baseline: current `implement_plan` branch at `c9ee84b`, including bounded Sheet bulk editing/undo and the issue-duplication slice recorded in WP-03 below. Compared with [ProductRequiremtns.md](ProductRequiremtns.md), including section 4.1 on vertical reordering. The previous review was based on `420b8e5`; its coverage table and findings below have been reconciled with the current source.
+Reviewed: 2026-10-28. Source baseline: current `implement_plan` branch at `6126d16`, including bounded Sheet bulk editing/undo and issue duplication with optional descendants. Compared with [ProductRequiremtns.md](ProductRequiremtns.md), including section 4.1 on vertical reordering. The previous review was based on `420b8e5`; its coverage table and findings below have been reconciled with the current source.
 
 ## 1. Review outcome
 
@@ -173,7 +173,7 @@ Each package should be a reviewable change or small series of changes with its o
 
 **Dependencies:** none. **Requirements:** 2, 14, 18, 19.
 
-- [~] Add explicit development/test/production configuration, using separate Apps Script projects and spreadsheet IDs so development triggers cannot write production data. (The user supplied separate test script/workbook IDs, `.clasp.json` targets the test script, and the 17 sources are pushed; configure the test workbook property, initialize it, and prove the other environments are isolated.)
+- [~] Add explicit development/test/production configuration, using separate Apps Script projects and spreadsheet IDs so development triggers cannot write production data. (The user supplied separate test script/workbook IDs, `.clasp.json` targets the test script, and the 17 sources are pushed. A direct `clasp run configureTrackerEnvironment` call returned Google's `NOT_FOUND` storage error; setting the test workbook property, initializing schema/triggers, and proving environment isolation remain open.)
 - [~] Add a startup health check for schema, required tabs, access, and installed triggers; document setup/repair and deployment rollback. (Schema/trigger checks and setup docs exist; access checks and rollback proof remain open.)
 - [ ] Commit repeatable browser test infrastructure and fixtures without depending on production data or credentials.
 - [~] Prove actor identity and the proposed authenticated agent transport using the actual account/deployment model in section 5D. Document role versus direct-Sheet access boundaries. (Actor/role scaffolding exists; identity and agent transport are not verified.)
