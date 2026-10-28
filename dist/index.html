@@ -694,6 +694,12 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     $$('#issue-form input, #issue-form select, #issue-form textarea, #issue-form button').forEach(el => el.disabled = value);
     $('#refresh').disabled = value; $('#create-issue').disabled = value || !state.ready; $('#add-epic').disabled = value || !state.ready;
     $('#saved-view-select').disabled = value || !state.ready; $('#save-view-open').disabled = value || !state.ready; $('#delete-saved-view').disabled = value || !state.ready;
+    $$('.sheet-row-controls button').forEach(button => {
+      if (button.hasAttribute('data-sheet-drag-id')) {
+        button.draggable = !value;
+        if (value) button.setAttribute('aria-disabled', 'true'); else button.removeAttribute('aria-disabled');
+      } else button.disabled = value || button.dataset.sheetBoundary === 'true';
+    });
   }
   function hasPendingSaves() { return state.activeSaves > 0 || Object.keys(state.saveQueues).length > 0; }
   function drainQuickQueue() {
@@ -1108,7 +1114,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     ].map(s => `<div class="stat"><div class="stat-label">${icon(s[0])}${s[1]}</div><div class="stat-bottom"><span class="stat-number">${s[2]}</span><span class="stat-note ${s[4]}">${s[3]}</span></div></div>`).join('');
     $('#epic-nav').innerHTML = state.issues.filter(i => i.type === 'Epic').map(i => `<button data-epic="${escape(i.id)}" class="${state.epic === i.id ? 'active' : ''}" title="${escape(i.summary)}"><span class="epic-dot"></span><span class="epic-name">${escape(i.summary)}</span></button>`).join('') || '<span class="nav-caption">No epics yet</span>';
     $('#issue-count').textContent = `${issues.length} of ${state.issues.length} issues`;
-    $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Expand parent rows to see children. Use Manual order and row controls to reorder siblings. Click an issue ID for details.', gantt: 'Double-click labels or bars to edit. Drag bars to reschedule; Epic spans follow child schedules.' }[state.view];
+    $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Drag row grips or use arrows to reorder siblings, regardless of status. Moving a row switches to Manual order. Click an issue ID for details.', gantt: 'Double-click labels or bars to edit. Drag bars to reschedule; Epic spans follow child schedules.' }[state.view];
     if (!state.issues.length) { $('#view-content').innerHTML = `<div class="empty-state">${icon('stack')}<h2>A fresh start for your next project.</h2><p>Create your first epic, story, task, or bug.</p><button class="button primary" data-new="Backlog">Create your first issue</button></div>`; return; }
     if (!issues.length) { $('#view-content').innerHTML = '<div class="empty-state"><h2>No issues match these filters.</h2><p>Try a different search, or clear the filters to see everything.</p><button class="button secondary" data-clear>Clear filters</button></div>'; return; }
     const content = $('#view-content'), oldScroll = content.querySelector('.board, .table-wrap, .gantt-viewport');
@@ -1181,7 +1187,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const manualOrder = state.sort === 'rank' && state.ascending;
     const renderRow = node => {
       const issue = node.issue, treeToggle = sheetTreeToggle(node); visibleIds.push(issue.id);
-      return `<tr class="sheet-issue-row${state.selectedIssueIds.includes(issue.id) ? ' selected' : ''}" data-sheet-row-id="${escape(issue.id)}" data-sheet-depth="${node.depth}" data-sheet-status="${escape(issue.status)}" data-sheet-parent="${escape(issue.parentId || '')}">${columns.map(field => `<td>${field.key === 'id' ? `<div class="sheet-id-cell" style="--sheet-depth:${node.depth}"><input type="checkbox" class="sheet-row-select" data-sheet-select="${escape(issue.id)}" aria-label="Select ${escape(issue.id)}: ${escape(issue.summary)}" ${state.selectedIssueIds.includes(issue.id) ? 'checked' : ''}>${treeToggle}${sheetRowControls(issue, list, manualOrder)}${cell(issue, field)}</div>` : cell(issue, field)}</td>`).join('')}</tr>`;
+      return `<tr class="sheet-issue-row${state.selectedIssueIds.includes(issue.id) ? ' selected' : ''}" data-sheet-row-id="${escape(issue.id)}" data-sheet-depth="${node.depth}" data-sheet-status="${escape(issue.status)}" data-sheet-parent="${escape(issue.parentId || '')}">${columns.map(field => `<td>${field.key === 'id' ? `<div class="sheet-id-cell" style="--sheet-depth:${node.depth}"><input type="checkbox" class="sheet-row-select" data-sheet-select="${escape(issue.id)}" aria-label="Select ${escape(issue.id)}: ${escape(issue.summary)}" ${state.selectedIssueIds.includes(issue.id) ? 'checked' : ''}>${treeToggle}${sheetRowControls(issue, list)}${cell(issue, field)}</div>` : cell(issue, field)}</td>`).join('')}</tr>`;
     };
     const body = state.swimlanes
       ? epicLanes(list).map(lane => {
@@ -1233,13 +1239,13 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const collapsed = Boolean(state.collapsedSheetParents[node.issue.id]), action = collapsed ? 'Expand' : 'Collapse';
     return `<button type="button" class="sheet-tree-toggle" data-toggle-sheet-parent="${escape(node.issue.id)}" aria-expanded="${!collapsed}" aria-label="${action} ${node.childCount} direct children under ${escape(node.issue.summary)}" title="${action} ${node.childCount} child items">${collapsed ? '+' : '−'}</button>`;
   }
-  function sheetRowControls(issue, list, manualOrder) {
-    const visible = list.filter(item => item.status === issue.status && (item.parentId || '') === (issue.parentId || ''));
-    const index = visible.findIndex(item => item.id === issue.id), disabled = !manualOrder || state.busy;
+  function sheetRowControls(issue, list) {
+    const visible = list.filter(item => sheetSameOrderScope(item, issue));
+    const index = visible.findIndex(item => item.id === issue.id), disabled = state.busy;
     const label = `${issue.id}: ${issue.summary}`;
-    return `<span class="sheet-row-controls"><button type="button" data-sheet-move="up" data-sheet-move-id="${escape(issue.id)}" aria-label="Move ${escape(label)} up" title="Move up" ${disabled || index <= 0 ? 'disabled' : ''}>↑</button><button type="button" data-sheet-move="down" data-sheet-move-id="${escape(issue.id)}" aria-label="Move ${escape(label)} down" title="Move down" ${disabled || index < 0 || index >= visible.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="sheet-row-grip" data-sheet-drag-id="${escape(issue.id)}" draggable="${!disabled}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" aria-label="Drag ${escape(label)} to reorder; use Alt+ArrowUp or Alt+ArrowDown" title="Drag or use Alt+ArrowUp/ArrowDown" ${disabled ? 'aria-disabled="true"' : ''}>⠿</button></span>`;
+    return `<span class="sheet-row-controls"><button type="button" data-sheet-move="up" data-sheet-move-id="${escape(issue.id)}" data-sheet-boundary="${index <= 0}" aria-label="Move ${escape(label)} up" title="Move up" ${disabled || index <= 0 ? 'disabled' : ''}>↑</button><button type="button" data-sheet-move="down" data-sheet-move-id="${escape(issue.id)}" data-sheet-boundary="${index < 0 || index >= visible.length - 1}" aria-label="Move ${escape(label)} down" title="Move down" ${disabled || index < 0 || index >= visible.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="sheet-row-grip" data-sheet-drag-id="${escape(issue.id)}" draggable="${!disabled}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" aria-label="Drag ${escape(label)} to reorder; use Alt+ArrowUp or Alt+ArrowDown" title="Drag or use Alt+ArrowUp/ArrowDown" ${disabled ? 'aria-disabled="true"' : ''}>⠿</button></span>`;
   }
-  function sheetSameOrderScope(a, b) { return a && b && a.status === b.status && (a.parentId || '') === (b.parentId || ''); }
+  function sheetSameOrderScope(a, b) { return a && b && (a.parentId || '') === (b.parentId || ''); }
   function sheetRankForDrop(moving, target, after) {
     const siblings = C.sorted(state.issues.filter(issue => issue.id !== moving.id && sheetSameOrderScope(issue, moving)));
     const targetIndex = siblings.findIndex(issue => issue.id === target.id);
@@ -1254,8 +1260,10 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (!moving || !target || moving.id === target.id || state.busy || !sheetSameOrderScope(moving, target)) return;
     const rank = sheetRankForDrop(moving, target, after);
     if (rank === null) { notify('No safe order position is available here. Refresh the project or move a different row first.', true); return; }
+    const switchedToManual = state.sort !== 'rank' || !state.ascending;
+    state.sort = 'rank'; state.ascending = true;
     try {
-      await persist({ ...moving, rank }, moving.version, 'Order updated', 'moveIssue');
+      await persist({ ...moving, rank }, moving.version, switchedToManual ? 'Order updated · Manual order' : 'Order updated', 'moveIssue');
       if (focusDirection) {
         const preferred = $(`[data-sheet-move-id="${CSS.escape(id)}"][data-sheet-move="${focusDirection}"]`);
         (preferred && !preferred.disabled ? preferred : $(`[data-sheet-drag-id="${CSS.escape(id)}"]`) || $(`[data-sheet-move-id="${CSS.escape(id)}"]:not(:disabled)`))?.focus();
@@ -1816,7 +1824,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       return;
     }
     const sheetSource = event.target.closest('[data-sheet-drag-id]');
-    if (state.view === 'sheet' && sheetSource && state.sort === 'rank' && state.ascending && !state.busy) {
+    if (state.view === 'sheet' && sheetSource && !state.busy) {
       const issue = issueById(sheetSource.dataset.sheetDragId);
       if (!issue) { event.preventDefault(); return; }
       sheetDraggingId = issue.id; event.dataTransfer.setData('text/plain', issue.id); event.dataTransfer.setData('application/x-sheetflow-issue', issue.id); event.dataTransfer.effectAllowed = 'move';
@@ -1841,7 +1849,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     }
     if (state.view === 'sheet' && sheetDraggingId && !state.busy) {
       const row = event.target.closest('.sheet-issue-row'), moving = issueById(sheetDraggingId), target = row && issueById(row.dataset.sheetRowId);
-      if (!row || !target || target.id === sheetDraggingId || !sheetSameOrderScope(moving, target)) return;
+      if (!row || !target || target.id === sheetDraggingId || !sheetSameOrderScope(moving, target)) { clearDragStyle(); event.dataTransfer.dropEffect = 'none'; return; }
       event.preventDefault(); event.dataTransfer.dropEffect = 'move'; clearDragStyle();
       row.classList.add(event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2 ? 'sheet-drop-before' : 'sheet-drop-after'); return;
     }

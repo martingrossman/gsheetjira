@@ -98,6 +98,7 @@ Only the title is required when creating a task. Other fields receive configured
 - Provide keyboard-accessible Move up and Move down actions.
 - Show the insertion position while dragging and allow undo of a reorder.
 - Make manual ordering available when another sort is active, and preserve the relative order of items hidden by filters.
+- In the hierarchical Sheet view, sibling order is independent of status. Keep row move controls usable after loading or refreshing; initiating a move from a column-sorted view switches to Manual order.
 
 ## 5. Task List
 

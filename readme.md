@@ -32,6 +32,8 @@ You can also open `dist/index.html` directly, or upload that single file to an H
 
 Saved views capture the current filters, view, sort, visible columns, swimlane setting, and collapse state. They are personal to the current browser and do not sync to other users.
 
+In **Sheet**, drag the dotted row grip, use the up/down buttons, or focus the grip and press Alt + Up/Down to reorder siblings under the same parent. Siblings can have different statuses. A move switches column-sorted views to **Manual order**, keeps a Story's children attached, and preserves status, parent, dates, and the relative order of hidden rows. Undo reverses the move. To change a task's parent, use the Parent field or Gantt hierarchy controls.
+
 Direct views: `#sheet`, `#kanban`, and `#gantt` (or `?view=sheet`, `?view=kanban`, `?view=gantt`).
 
 Useful commands:
@@ -219,7 +221,7 @@ npm ci
 npm run test:browser
 ```
 
-`playwright.config.mjs` explicitly uses `channel: 'msedge'`. If Edge is missing, install it with `npx playwright install msedge` (`npx.cmd` in restricted PowerShell). The suite builds and serves the demo on port 4174, gives each test a fresh browser context and synthetic project, and covers single/tree duplication, reset fields, undo persistence, later edits/links/comments, and retry after a simulated lost acknowledgement. It never uses Google credentials or a live workbook. Failure traces appear in `test-results/`. The regression workflow runs the build, Node tests, and Edge tests on pushes and pull requests; GitHub execution is verified separately from local results.
+`playwright.config.mjs` explicitly uses `channel: 'msedge'`. If Edge is missing, install it with `npx playwright install msedge` (`npx.cmd` in restricted PowerShell). The suite builds and serves the demo on port 4174, gives each test a fresh browser context and synthetic project, and covers duplication/undo, later edits/links/comments, lost-acknowledgement retry, and Sheet ordering through buttons, keyboard, and drag. Sheet checks include mixed statuses, column sorting, initial load/reload, Story children, undo, and hidden siblings. It never uses Google credentials or a live workbook. Failure traces appear in `test-results/`. The regression workflow runs the build, Node tests, and Edge tests on pushes and pull requests; GitHub execution is verified separately from local results.
 
 The local browser workflow was also exercised for creation, Kanban dragging, inline sheet edits, Gantt dragging/resizing, persistence across reloads, filters, validation, CSV download, and mobile layouts. Live Google authorization, native Sheet formatting, and the deployed Apps Script runtime still need a smoke test after deployment.
 
