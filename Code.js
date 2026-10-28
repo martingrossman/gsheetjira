@@ -69,12 +69,8 @@ function getProject() {
   return withLock_(function () {
     authorizationService_().require('read');
     var book = getBook_();
-    var issues = readIssues_(book), comments = {};
-    issues.forEach(function (issue) { comments[issue.id] = []; });
-    if (typeof SheetFlowComments !== 'undefined') SheetFlowComments.read(book).forEach(function (comment) {
-      if (Object.prototype.hasOwnProperty.call(comments, comment.taskId)) comments[comment.taskId].push(comment);
-    });
-    return browserValue_({ issues: issues.map(clientIssue_), comments: comments, settings: typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [], spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() });
+    var issues = readIssues_(book);
+    return browserValue_({ issues: issues.map(clientIssue_), comments: {}, commentsLazy: true, mode: typeof trackerMode_ === 'function' ? trackerMode_() : 'team', settings: typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [], spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() });
   });
 }
 /** expectedVersion prevents an old browser tab overwriting a newer row. */
@@ -84,7 +80,9 @@ function saveIssue(input, expectedVersion) {
     return withLock_(function () {
       timing.lockWaitMs = Date.now() - started;
       var mark = Date.now(); authorizationService_().require('write'); timing.authorizeMs = Date.now() - mark;
-      mark = Date.now(); var book = getBook_(); timing.openBookMs = Date.now() - mark;
+      mark = Date.now();
+      var fastRead = input && input.operationId && typeof trackerMode_ === 'function' && trackerMode_() === 'personal' && typeof Sheets !== 'undefined' && getRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA') !== '2';
+      var book = fastRead ? readPersonalSaveBook_() : getBook_(); timing.openBookMs = Date.now() - mark;
       var result = saveIssueLocked_(book, input, expectedVersion, timing);
       timing.outcome = timing.replayed ? 'replayed' : 'saved';
       return result;
@@ -328,6 +326,9 @@ function saveIssueLocked_(book, input, expectedVersion, timing) {
   if (!current) issue.id = nextId_(issues);
   TrackerCore.validate(issue, issues);
   timing.validateMs = Date.now() - mark;
+  if (book._personalSave && !snapshot.versioned && typeof Sheets !== 'undefined' && operationId) {
+    return savePersonalIssueBatch_(book, issue, current, snapshot, operationId, timing);
+  }
   mark = Date.now();
   var written = writeIssue_(book, issue, current, snapshot);
   if (!snapshot.versioned) {
@@ -345,6 +346,86 @@ function saveIssueLocked_(book, input, expectedVersion, timing) {
   else { history.record(book, event); history.receipt(book, operationId, saved, systemRows); }
   SpreadsheetApp.flush();
   timing.journalMs = Date.now() - mark;
+  return saved;
+}
+/** One fresh API read supplies the metadata and both ranges needed by a personal legacy save. */
+function readPersonalSaveBook_() {
+  var id = environmentSpreadsheetId_();
+  if (!id) throw new Error('Run setupTracker in the Apps Script editor first.');
+  var source = SpreadsheetApp.openById(id), names = ['Issues', '_System'], metadata = {};
+  var ranges = names.map(function (name) {
+    var sheet = source.getSheetByName(name);
+    if (!sheet) throw new Error('Personal mode requires Issues and _System. Run setupTracker.');
+    metadata[name] = { sheetId: sheet.getSheetId(), rowCount: sheet.getMaxRows(), lastRow: Math.max(1, sheet.getLastRow()) };
+    return "'" + name + "'!A1:" + (name === 'Issues' ? 'U' : 'B') + metadata[name].lastRow;
+  });
+  var zone = source.getSpreadsheetTimeZone();
+  var result = Sheets.Spreadsheets.Values.batchGet(id, { ranges: ranges, valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'SERIAL_NUMBER' }), sheets = {};
+  names.forEach(function (name, index) {
+    var meta = metadata[name], rows = (result.valueRanges[index] || {}).values || [];
+    rows = rows.map(function (row, rowIndex) { return row.map(function (value, column) {
+      var kind = name === 'Issues' && rowIndex > 0 && TrackerCore.fields[column] && TrackerCore.fields[column].kind;
+      if (typeof value === 'number' && (kind === 'date' || kind === 'timestamp')) {
+        var local = new Date(Math.round((value - 25569) * 86400000)).toISOString().slice(0, -1);
+        return Utilities.parseDate(local, zone, "yyyy-MM-dd'T'HH:mm:ss.SSS");
+      }
+      return value;
+    }); });
+    sheets[name] = {
+      getName: function () { return name; }, getSheetId: function () { return meta.sheetId; },
+      getMaxRows: function () { return meta.rowCount; }, getLastRow: function () { return meta.lastRow; },
+      getRange: function (row, column, height, width) { return { getValues: function () {
+        return Array.from({ length: height || 1 }, function (_, r) { return Array.from({ length: width || 1 }, function (_, c) { return rows[row - 1 + r] && rows[row - 1 + r][column - 1 + c] != null ? rows[row - 1 + r][column - 1 + c] : ''; }); });
+      } }; }
+    };
+  });
+  assertHeaders_(sheets.Issues);
+  return { _personalSave: true, getId: function () { return id; }, getSheetByName: function (name) { return sheets[name] || null; }, getSpreadsheetTimeZone: function () { return zone; } };
+}
+/** Personal legacy save: task, category and retry receipt commit in one Sheets API batch. */
+function savePersonalIssueBatch_(book, issue, current, snapshot, operationId, timing) {
+  var mark = Date.now(), sheet = book.getSheetByName('Issues'), system = book.getSheetByName('_System');
+  var row = current ? current._row : Math.max(2, sheet.getLastRow() + 1);
+  var zone = book.getSpreadsheetTimeZone(), requests = [];
+  function cell(value, kind) {
+    if (value === '' || value == null) return { userEnteredValue: {} };
+    if (kind === 'date') return { userEnteredValue: { numberValue: Date.parse(value + 'T00:00:00Z') / 86400000 + 25569 }, userEnteredFormat: { numberFormat: { type: 'DATE', pattern: 'yyyy-mm-dd' } } };
+    if (kind === 'timestamp') {
+      var local = Utilities.formatDate(new Date(value), zone, "yyyy-MM-dd'T'HH:mm:ss.SSS");
+      return { userEnteredValue: { numberValue: Date.parse(local + 'Z') / 86400000 + 25569 }, userEnteredFormat: { numberFormat: { type: 'DATE_TIME', pattern: 'yyyy-mm-dd hh:mm:ss' } } };
+    }
+    return { userEnteredValue: typeof value === 'number' ? { numberValue: value } : { stringValue: String(value) } };
+  }
+  function write(target, targetRow, values) {
+    if (targetRow > target.getMaxRows()) requests.push({ appendDimension: { sheetId: target.getSheetId(), dimension: 'ROWS', length: targetRow - target.getMaxRows() + 100 } });
+    requests.push({ updateCells: { start: { sheetId: target.getSheetId(), rowIndex: targetRow - 1, columnIndex: 0 }, rows: [{ values: values }], fields: 'userEnteredValue' } });
+    values.forEach(function (value, column) { if (value.userEnteredFormat) requests.push({ repeatCell: { range: { sheetId: target.getSheetId(), startRowIndex: targetRow - 1, endRowIndex: targetRow, startColumnIndex: column, endColumnIndex: column + 1 }, cell: { userEnteredFormat: value.userEnteredFormat }, fields: 'userEnteredFormat.numberFormat' } }); });
+  }
+  var taskCells = TrackerCore.fields.map(function (field) { return cell(issue[field.key], field.kind); });
+  write(sheet, row, taskCells);
+  var saved = clientIssue_(issue); saved.version = legacyIssueVersion_(saved);
+  var nextSystemRow = Math.max(2, system.getLastRow() + 1);
+  if ((snapshot.taskTypes[issue.id] || 'algo') !== issue.taskTypeId) {
+    var typeKey = 'TASK_TYPE:' + issue.id;
+    var typeIndex = snapshot.systemRows.findIndex(function (entry) { return String(entry[0]) === typeKey; });
+    write(system, typeIndex >= 0 ? typeIndex + 2 : nextSystemRow++, [cell(typeKey), cell(issue.taskTypeId), cell(new Date().toISOString(), 'timestamp')]);
+  }
+  var receiptKey = 'IDEMPOTENCY:' + operationId;
+  write(system, nextSystemRow, [cell(receiptKey), cell(JSON.stringify({ savedAt: new Date().toISOString(), result: saved })), cell(new Date().toISOString(), 'timestamp')]);
+  // A request failure is never retried here: the browser retries the same operation ID.
+  var response = Sheets.Spreadsheets.batchUpdate({ requests: requests, includeSpreadsheetInResponse: true, responseRanges: ["'Issues'!A" + row + ':U' + row], responseIncludeGridData: true }, book.getId());
+  timing.writeMs = Date.now() - mark; mark = Date.now();
+  var returnedSheet = response.updatedSpreadsheet && response.updatedSpreadsheet.sheets && response.updatedSpreadsheet.sheets.find(function (entry) { return entry.properties.sheetId === sheet.getSheetId(); });
+  var data = returnedSheet && returnedSheet.data && returnedSheet.data[0];
+  var values = data && data.rowData && data.rowData[0] && data.rowData[0].values || [];
+  var matches = taskCells.every(function (expected, index) {
+    var wanted = expected.userEnteredValue, actual = values[index] && values[index].effectiveValue || {};
+    if (wanted.numberValue !== undefined) return actual.numberValue !== undefined && Math.abs(wanted.numberValue - actual.numberValue) < 0.000000001;
+    if (wanted.stringValue !== undefined) return wanted.stringValue === actual.stringValue;
+    return Object.keys(actual).length === 0;
+  });
+  if (!matches) throw new Error('The save response could not be verified. Retry this save with the same operation ID.');
+  timing.verifyMs = Date.now() - mark; timing.journalMs = 0; timing.writer = 'sheets-batch';
   return saved;
 }
 /** Atomic server command for status, parent and rank changes across views. */

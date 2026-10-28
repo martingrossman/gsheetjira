@@ -338,6 +338,10 @@ Backlog → Ready → In Progress → Review → Done
 
 ## 16. Performance
 
+- Support an explicit personal mode for owner-only deployments: manual refresh, comments loaded when an issue opens, and detailed change logging disabled. Preserve existing history and allow switching back to team mode.
+- In personal mode, skip custom role resolution only when server role enforcement is disabled. Keep Google deployment access control, validation, conflict detection, write locking, and duplicate-retry protection.
+- Batch ordinary personal legacy task writes and retry receipts together. Keep team mode as the default for unconfigured deployments; richer team/agent history and permissions remain required in team mode.
+
 - Prioritize fast task creation and inline editing.
 - Load shared task data once and reuse it across views.
 - Read and write sheet ranges in batches.

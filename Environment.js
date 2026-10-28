@@ -52,3 +52,20 @@ function startupHealthCheck() {
   if (!result.ok) throw new Error('SheetFlow startup health check failed: ' + JSON.stringify(result));
   return result;
 }
+
+/** Personal mode is intended for an owner-only Google deployment. Team remains the default. */
+function trackerMode_() {
+  return PropertiesService.getScriptProperties().getProperty('SHEETFLOW_MODE') === 'personal' ? 'personal' : 'team';
+}
+function getTrackerMode() {
+  authorizationService_().require('read');
+  return trackerMode_();
+}
+function configureTrackerMode(mode) {
+  authorizationService_().require('configure');
+  if (mode !== 'personal' && mode !== 'team') throw new Error('Choose personal or team mode.');
+  PropertiesService.getScriptProperties().setProperty('SHEETFLOW_MODE', mode);
+  return { mode: mode, historyEnabled: mode === 'team', autoRefresh: mode === 'team' };
+}
+function enablePersonalTrackerMode() { return configureTrackerMode('personal'); }
+function enableTeamTrackerMode() { return configureTrackerMode('team'); }

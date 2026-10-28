@@ -656,6 +656,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     }
     const db = getLocal();
     if (method === 'getProject') return { issues: db.issues, comments: db.comments.reduce((map, comment) => { (map[comment.taskId] ||= []).push(comment); return map; }, {}), settings: [], spreadsheetUrl: '', name: 'Sample project' };
+    if (method === 'getTaskComments') return db.comments.filter(comment => comment.taskId === args[0]);
     if (method === 'addTaskComment') {
       const [taskId, body] = args, comment = { id: 'COM-' + crypto.randomUUID(), taskId, authorId: 'browser-user', body: body.trim(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), editedBy: '' };
       if (!comment.body || comment.body.length > 5000) throw new Error('Comment must contain between 1 and 5,000 characters.');
@@ -888,7 +889,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     try {
       const project = await rpc('getProject');
       if (!project || !Array.isArray(project.issues)) throw new Error('The server returned no valid project data. Reload the latest tracker deployment. If this continues, run startupHealthCheck in Apps Script.');
-      state.issues = project.issues.map(withDraft); state.comments = project.comments || {}; state.settings = project.settings || []; state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
+      state.issues = project.issues.map(withDraft); state.comments = project.comments || {}; state.commentsLazy = project.commentsLazy === true; state.mode = project.mode || 'team'; state.settings = project.settings || []; state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
       $('#error-banner').hidden = true;
       $('#connection-title').textContent = isCloud ? 'Connected to Google Sheets' : 'Browser demo';
       $('#connection-detail').textContent = isCloud ? 'Shared data. Three ways to work.' : 'Sample data saved on this browser.';
@@ -1060,6 +1061,18 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const comments = state.comments[id] || [];
     if (!id) { $('#comments-section').innerHTML = ''; return; }
     $('#comments-section').innerHTML = `<h3 class="child-heading">Comments (${comments.length})</h3>${comments.map(comment => `<div class="comment-item"><small>${escape(comment.authorId || 'Unknown')} · ${escape(timestamp(comment.createdAt))}</small><textarea data-comment-edit="${escape(comment.id)}" maxlength="5000">${escape(comment.body)}</textarea><button type="button" class="button subtle" data-comment-save="${escape(comment.id)}">Save comment</button></div>`).join('')}<textarea id="new-comment" maxlength="5000" placeholder="Add a comment…" aria-label="New comment"></textarea><button type="button" class="button secondary" id="add-comment">Add comment</button>`;
+  }
+  async function loadIssueComments(id, session) {
+    if (!id || !state.commentsLazy) return;
+    $('#comments-section').innerHTML = '<p role="status">Loading comments…</p>';
+    try {
+      const comments = await rpc('getTaskComments', id);
+      if (!Array.isArray(comments)) throw new Error('Comments could not be loaded.');
+      state.comments[id] = comments;
+      if (dialog.open && edited?.id === id && formSession === session) renderComments(id);
+    } catch (error) {
+      if (dialog.open && edited?.id === id && formSession === session) $('#comments-section').innerHTML = `<p role="alert">${escape(error.message)}</p><button type="button" class="button secondary" id="retry-comments">Retry comments</button>`;
+    }
   }
   function inEpic(issue) {
     if (!state.epic) return true;
@@ -1588,6 +1601,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     renderComments(id);
     if (formSaveTimer) clearTimeout(formSaveTimer); formSaveTimer = null;
     initialForm = formSnapshot(); setFormSaveStatus(id ? 'Saved' : 'Not saved'); if (!dialog.open) dialog.showModal(); form.elements.summary.focus();
+    loadIssueComments(id, formSession);
   }
   function closeIssue() {
     if (state.busy) return false;
@@ -1742,6 +1756,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   form.elements.status.addEventListener('change', () => { if (form.elements.status.value === 'Done') form.elements.progress.value = 100; else if (edited?.status === 'Done' && form.elements.progress.value === '100') form.elements.progress.value = 0; });
   $('#child-issues').addEventListener('click', event => { const target = event.target.closest('[data-child]'); if (target && closeIssue()) openIssue(target.dataset.child); });
   $('#comments-section').addEventListener('click', async event => {
+    if (event.target.closest('#retry-comments') && edited) { loadIssueComments(edited.id, formSession); return; }
     const add = event.target.closest('#add-comment'), save = event.target.closest('[data-comment-save]');
     if (!edited || (!add && !save)) return;
     const body = add ? $('#new-comment').value : event.target.parentElement.querySelector('[data-comment-edit]').value;
@@ -2002,7 +2017,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   });
   window.addEventListener('beforeunload', event => { if (state.busy || hasPendingSaves() || (dialog.open && formSnapshot() !== initialForm)) { event.preventDefault(); event.returnValue = ''; } });
   window.addEventListener('storage', event => { if (event.key === storageKey && !state.busy && !hasPendingSaves() && !dialog.open) refresh(true); });
-  setInterval(() => { if (isCloud && !document.hidden && !dialog.open && !state.busy && !hasPendingSaves() && !document.activeElement?.matches('.cell-input')) refresh(true); }, 45000);
+  setInterval(() => { if (isCloud && state.mode !== 'personal' && !document.hidden && !dialog.open && !state.busy && !hasPendingSaves() && !document.activeElement?.matches('.cell-input')) refresh(true); }, 45000);
   const requestedView = location.hash.slice(1) || new URLSearchParams(location.search).get('view') || document.body.dataset.initialView;
   state.view = ['sheet', 'kanban', 'gantt'].includes(requestedView) ? requestedView : 'kanban';
   updateUndoControl();

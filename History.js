@@ -1,8 +1,9 @@
-/** Append-only mutation history and bounded idempotency receipts. */
+/** Optional append-only mutation history and persistent idempotency receipts. */
 var SheetFlowHistory = (function () {
   'use strict';
   var receiptPrefix = 'IDEMPOTENCY:';
   function prepareRecord(book, event) {
+    if (typeof trackerMode_ === 'function' && trackerMode_() === 'personal') return null;
     var sheet = book.getSheetByName('Change History');
     if (!sheet) return null;
     var row = [

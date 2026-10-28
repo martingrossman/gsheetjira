@@ -29,12 +29,16 @@ var SheetFlowAuth = (function () {
   function actor() { return resolveActor(activeEmail(), PropertiesService.getScriptProperties().getProperties()); }
   function enforced() { return PropertiesService.getScriptProperties().getProperty('SHEETFLOW_AUTH_ENFORCED') === 'true'; }
   function requireCapability(capability) {
-    return requireForEmail(capability, activeEmail());
+    var props = PropertiesService.getScriptProperties().getProperties();
+    if (props.SHEETFLOW_MODE === 'personal' && props.SHEETFLOW_AUTH_ENFORCED !== 'true') {
+      return { id: 'owner-session', email: '', role: 'administrator', authenticated: false };
+    }
+    return requireForEmail(capability, activeEmail(), props);
   }
-  function requireForEmail(capability, email) {
+  function requireForEmail(capability, email, snapshot) {
     email = String(email || '').trim().toLowerCase();
     // One fresh property snapshot per authorization check; never cache permissions between requests.
-    var props = PropertiesService.getScriptProperties().getProperties();
+    var props = snapshot || PropertiesService.getScriptProperties().getProperties();
     var resolved = resolveActor(email, props), enforcement = props.SHEETFLOW_AUTH_ENFORCED === 'true';
     var allowed = capabilities[capability] || [];
     if (enforcement && !email) throw new Error('AUTH_IDENTITY_REQUIRED: Google did not provide the editor identity. Direct Sheet edits require a deployment that exposes the active editor.');

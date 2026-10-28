@@ -68,3 +68,12 @@ test('authorization observes enforcement changes without retaining an owner-only
   assert.throws(() => h.auth.require('write'), /AUTH_FORBIDDEN/);
   assert.equal(h.auth.actor().role, 'viewer');
 });
+
+test('personal mode skips custom role resolution but never bypasses enforced authorization', () => {
+  const h=harness({email:'viewer@example.com'});
+  h.properties.set('SHEETFLOW_MODE','personal');
+  h.properties.set('SHEETFLOW_ROLE_viewer@example.com','viewer');
+  assert.equal(h.auth.require('write').id,'owner-session');
+  h.properties.set('SHEETFLOW_AUTH_ENFORCED','true');
+  assert.throws(()=>h.auth.require('write'),/AUTH_FORBIDDEN/);
+});

@@ -127,7 +127,9 @@ for (const schema of ['1', '2']) test(`schema ${schema} project payload converts
   assert.ok(project.issues[0].version);
   assert.equal(Object.keys(project.issues[0]).some(key => key.startsWith('_')), false);
   assert.match(project.settings[0].updatedAt, /^\d{4}-\d{2}-\d{2}T/);
-  assert.match(project.comments[task.id][0].createdAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(project.commentsLazy, true);
+  assert.deepEqual(Object.keys(project.comments), []);
+  assert.match(h.api.getTaskComments(task.id)[0].createdAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.ok(h.tabs.Settings.rows[1][7] instanceof Date, 'stored timestamps remain native Sheet dates');
   assert.ok(h.tabs.Comments.rows[1][4] instanceof Date);
   if (schema === '2') assert.ok(h.api.readVersionedIssues_(h.book, false)[0]._record['Created At'] instanceof Date);
@@ -371,14 +373,127 @@ test('optimized saves use fresh data on every request and retain v2 workflow met
   assert.throws(()=>h.api.saveIssue({id:task.id,summary:'Unsafe edit'},current.version),/schema is incomplete/);
 });
 
-test('project refresh batches comment reads and excludes comments on unavailable issues', () => {
+test('project refresh defers comments and an issue fetch returns only its own comments', () => {
   const h=harness();loadBrowserServices(h);
   addRecord(h.tabs['Projects and Epics'],{ID:'PROJECT-1','Entity Kind':'Project',Title:'Project',Active:true,Revision:1});
   const first=h.api.saveIssue({summary:'First task'}),second=h.api.saveIssue({summary:'Second task'});
   h.api.addTaskComment(first.id,'First comment');h.api.addTaskComment(second.id,'Second comment');h.api.addTaskComment('missing-id','Orphan comment');
   h.reads.length=0;
   const project=h.api.getProject();
-  assert.equal(h.reads.filter(read=>read.name==='Comments' && read.row===2).length,1);
-  assert.equal(project.comments[first.id][0].body,'First comment');assert.equal(project.comments[second.id][0].body,'Second comment');
+  assert.equal(h.reads.filter(read=>read.name==='Comments' && read.row===2).length,0);
+  assert.equal(project.commentsLazy,true);
+  assert.equal(h.api.getTaskComments(first.id)[0].body,'First comment');
+  assert.equal(h.api.getTaskComments(second.id)[0].body,'Second comment');
   assert.equal(project.comments['missing-id'],undefined);assertBrowserValue(project);
+});
+
+function personalBatchHarness() {
+  const h=harness(); loadBrowserServices(h);
+  vm.runInContext(fs.readFileSync(require.resolve('../Environment.js'),'utf8'),h.api);
+  h.properties.set('SHEETFLOW_MODE','personal');
+  const calls=[]; let failBefore=false,lostAfter=false;
+  const sheets=Object.values(h.tabs);
+  sheets.forEach((sheet,index)=> { sheet.getSheetId=()=>index; });
+  const originalFormat=h.api.Utilities.formatDate;
+  h.api.Utilities.formatDate=(date,zone,format)=>format==="yyyy-MM-dd'T'HH:mm:ss.SSS" ? date.toISOString().slice(0,-1) : originalFormat(date,zone,format);
+  h.api.Utilities.parseDate=value=>new Date(value.length===10 ? value+'T00:00:00Z' : value.endsWith('Z') ? value : value+'Z');
+  h.api.Sheets={Spreadsheets:{Values:{batchGet(id,options) {
+    assert.equal(id,h.book.getId());assert.equal(options.ranges.length,2);
+    return {valueRanges:['Issues','_System'].map(name=>{
+      const sheet=h.tabs[name];
+      return {values:sheet.rows.map(row=>row.map(value=>value instanceof Date ? value.getTime()/86400000+25569 : value))};
+    })};
+  }},batchUpdate(request,id) {
+    calls.push(request); assert.equal(id,h.book.getId());
+    if(failBefore) {failBefore=false;throw new Error('Batch rejected');}
+    const responses=[];
+    for(const entry of request.requests) {
+      if(entry.appendDimension || entry.repeatCell) continue;
+      const change=entry.updateCells, sheet=sheets[change.start.sheetId],rowIndex=change.start.rowIndex;
+      while(sheet.rows.length<=rowIndex)sheet.rows.push([]);
+      change.rows[0].values.forEach((cell,column)=> {
+        const value=cell.userEnteredValue;
+        let stored=value.stringValue ?? value.numberValue ?? '';
+        const kind=sheet===h.tabs.Issues ? Core.fields[column]?.kind : column===2 ? 'timestamp' : '';
+        if(typeof stored==='number' && ['date','timestamp'].includes(kind))stored=new Date(Math.round((stored-25569)*86400000));
+        sheet.rows[rowIndex][column]=stored;
+      });
+      if(sheet===h.tabs.Issues) responses.push({properties:{sheetId:sheet.getSheetId()},data:[{startRow:rowIndex,rowData:[{values:change.rows[0].values.map(cell=>({effectiveValue:cell.userEnteredValue}))}]}]});
+    }
+    if(lostAfter){lostAfter=false;throw new Error('Acknowledgement lost');}
+    return {updatedSpreadsheet:{sheets:responses}};
+  }}};
+  h.api.SpreadsheetApp.flush=()=>{throw new Error('Batched personal save must not flush SpreadsheetApp');};
+  return {...h,calls,fail:()=>{failBefore=true;},loseAcknowledgement:()=>{lostAfter=true;}};
+}
+
+test('personal batch saves native dates and literal text with category and receipt in one request', () => {
+  const h=personalBatchHarness();
+  const saved=h.api.saveIssue({summary:'=literal task',description:'+literal detail',taskTypeId:'data',startDate:'2026-10-28',dueDate:'2026-10-29',operationId:'personal-create'});
+  assert.equal(h.calls.length,1);
+  const stored=h.api.getProject().issues[0];
+  assert.equal(stored.version,saved.version);
+  assert.equal(stored.summary,'=literal task');assert.equal(stored.description,'+literal detail');
+  assert.equal(stored.startDate,'2026-10-28');assert.equal(stored.taskTypeId,'data');
+  assert.ok(h.tabs.Issues.rows[1][9] instanceof Date);assert.ok(h.tabs.Issues.rows[1][18] instanceof Date);
+  assert.equal(h.tabs['Change History'].rows.length,1);
+  assert.equal(h.api.SheetFlowHistory.findReceipt(h.book,'personal-create').result.version,saved.version);
+  const updated=h.api.saveIssue({id:saved.id,summary:'Updated',dueDate:'',operationId:'personal-update'},saved.version);
+  assert.equal(h.calls.length,2);assert.equal(h.api.getProject().issues[0].version,updated.version);
+  assert.equal(h.api.getProject().issues[0].dueDate,'');
+  assert.throws(()=>h.api.saveIssue({id:saved.id,summary:'Stale',operationId:'stale'},saved.version),/changed elsewhere/);
+  assert.equal(h.calls.length,2);
+});
+
+test('a lost personal batch acknowledgement replays its receipt without another write', () => {
+  const h=personalBatchHarness();h.loseAcknowledgement();
+  const input={summary:'One task',operationId:'personal-lost'};
+  assert.throws(()=>h.api.saveIssue(input),/Acknowledgement lost/);
+  const saved=h.api.saveIssue(input);
+  assert.equal(h.calls.length,1);assert.equal(h.api.getProject().issues.length,1);
+  assert.equal(saved.id,h.tabs.Issues.rows[1][0]);
+});
+
+test('a rejected personal batch leaves neither task nor receipt and a retry can create once', () => {
+  const h=personalBatchHarness();h.fail();
+  const input={summary:'Retry rejection',operationId:'personal-rejected'};
+  assert.throws(()=>h.api.saveIssue(input),/Batch rejected/);
+  assert.equal(h.tabs.Issues.rows.length,1);assert.equal(h.api.SheetFlowHistory.findReceipt(h.book,input.operationId),null);
+  const saved=h.api.saveIssue(input);
+  assert.equal(h.api.getProject().issues.length,1);assert.equal(h.calls.length,2);
+  assert.equal(h.api.saveIssue(input).id,saved.id);assert.equal(h.calls.length,2);
+});
+
+test('personal mode suppresses all detailed history and switching to team resumes it', () => {
+  const h=personalBatchHarness();
+  h.api.SheetFlowHistory.record(h.book,{entityId:'PRJ-1',eventKind:'direct_edit'});
+  assert.equal(h.tabs['Change History'].rows.length,1);
+  h.properties.set('SHEETFLOW_MODE','team');
+  h.api.SheetFlowHistory.record(h.book,{entityId:'PRJ-1',eventKind:'direct_edit'});
+  assert.equal(h.tabs['Change History'].rows.length,2);
+});
+
+test('personal batched reads detect native edits and header damage on the next save', () => {
+  const h=personalBatchHarness();
+  const saved=h.api.saveIssue({summary:'Original',operationId:'personal-native'});
+  h.tabs.Issues.rows[1][3]='Edited in Sheets';
+  assert.throws(()=>h.api.saveIssue({id:saved.id,summary:'Stale',operationId:'personal-stale'},saved.version),/changed elsewhere/);
+  const latest=h.api.getProject().issues[0];
+  h.tabs.Issues.rows[0][3]='Broken summary header';
+  assert.throws(()=>h.api.saveIssue({id:saved.id,summary:'Unsafe',operationId:'personal-header'},latest.version),/different column headers/);
+  assert.equal(h.calls.length,1);
+});
+
+test('personal legacy batch creation uses the standard writer without mixing cached sheets and API writes', () => {
+  const h=personalBatchHarness();h.api.SpreadsheetApp.flush=()=>{};
+  const result=h.api.createIssuesBatch([
+    {operationId:'personal-list-1',input:{summary:'List first'}},
+    {operationId:'personal-list-2',input:{summary:'List second',taskTypeId:'data'}}
+  ]);
+  assert.equal(result.errors.length,0);assert.equal(result.items.length,2);
+  assert.equal(h.calls.length,0);
+  assert.equal(h.api.SheetFlowHistory.findReceipt(h.book,'personal-list-1').result.id,result.items[0].issue.id);
+  assert.equal(h.api.SheetFlowHistory.findReceipt(h.book,'personal-list-2').result.id,result.items[1].issue.id);
+  assert.equal(h.tabs['Change History'].rows.length,1);
+  assert.equal(h.api.saveIssue({summary:'Editor call without operation ID'}).summary,'Editor call without operation ID');
 });
