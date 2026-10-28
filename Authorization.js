@@ -9,36 +9,37 @@ var SheetFlowAuth = (function () {
     accept: ['administrator'],
     agentWorkflow: ['administrator', 'agent']
   };
-  function actor() {
+  function activeEmail() {
     var email = '';
     try { email = Session.getActiveUser().getEmail() || ''; } catch (ignore) {}
-    var props = PropertiesService.getScriptProperties();
-    var configured = email ? props.getProperty('SHEETFLOW_ROLE_' + email.toLowerCase()) : '';
+    return email;
+  }
+  function resolveActor(email, props) {
+    var configured = email ? props['SHEETFLOW_ROLE_' + email.toLowerCase()] : '';
     // A missing email must never inherit administrator privileges once enforcement
     // is enabled. Personal, owner-only deployments remain compatible while the
     // enforcement switch is off.
-    var defaultRole = props.getProperty('SHEETFLOW_DEFAULT_ROLE') || (enforced() ? 'viewer' : 'administrator');
-    if (enforced() && !configured && String(defaultRole).toLowerCase() === 'administrator') defaultRole = 'viewer';
+    var enforcement = props.SHEETFLOW_AUTH_ENFORCED === 'true';
+    var defaultRole = props.SHEETFLOW_DEFAULT_ROLE || (enforcement ? 'viewer' : 'administrator');
+    if (enforcement && !configured && String(defaultRole).toLowerCase() === 'administrator') defaultRole = 'viewer';
     var role = String(configured || defaultRole).toLowerCase();
     if (roles.indexOf(role) < 0) role = 'viewer';
     return { id: email || 'owner-session', email: email, role: role, authenticated: Boolean(email) };
   }
+  function actor() { return resolveActor(activeEmail(), PropertiesService.getScriptProperties().getProperties()); }
   function enforced() { return PropertiesService.getScriptProperties().getProperty('SHEETFLOW_AUTH_ENFORCED') === 'true'; }
   function requireCapability(capability) {
-    return requireForEmail(capability, actor().email);
+    return requireForEmail(capability, activeEmail());
   }
   function requireForEmail(capability, email) {
     email = String(email || '').trim().toLowerCase();
-    var props = PropertiesService.getScriptProperties();
-    var configured = email && props.getProperty('SHEETFLOW_ROLE_' + email);
-    var defaultRole = props.getProperty('SHEETFLOW_DEFAULT_ROLE') || (enforced() ? 'viewer' : 'administrator');
-    if (enforced() && !configured && String(defaultRole).toLowerCase() === 'administrator') defaultRole = 'viewer';
-    var role = String(configured || defaultRole).toLowerCase();
-    if (roles.indexOf(role) < 0) role = 'viewer';
+    // One fresh property snapshot per authorization check; never cache permissions between requests.
+    var props = PropertiesService.getScriptProperties().getProperties();
+    var resolved = resolveActor(email, props), enforcement = props.SHEETFLOW_AUTH_ENFORCED === 'true';
     var allowed = capabilities[capability] || [];
-    if (enforced() && !email) throw new Error('AUTH_IDENTITY_REQUIRED: Google did not provide the editor identity. Direct Sheet edits require a deployment that exposes the active editor.');
-    if (enforced() && allowed.indexOf(role) < 0) throw new Error('AUTH_FORBIDDEN: ' + capability + ' requires an authorized role.');
-    return { id: email || 'owner-session', email: email, role: role, authenticated: Boolean(email) };
+    if (enforcement && !email) throw new Error('AUTH_IDENTITY_REQUIRED: Google did not provide the editor identity. Direct Sheet edits require a deployment that exposes the active editor.');
+    if (enforcement && allowed.indexOf(resolved.role) < 0) throw new Error('AUTH_FORBIDDEN: ' + capability + ' requires an authorized role.');
+    return resolved;
   }
   function configure(email, role) {
     email = String(email || '').trim().toLowerCase(); role = String(role || '').toLowerCase();

@@ -79,6 +79,43 @@ function loadBrowserServices(h) {
   h.api.SheetFlowSettings.ensure(h.book);
 }
 
+test('save journal resolves both destinations before writing and preserves existing receipt timestamps', () => {
+  const h = harness(); loadBrowserServices(h);
+  const calls = [];
+  for (const name of ['Change History', '_System']) {
+    const sheet = h.tabs[name], getLastRow = sheet.getLastRow, getRange = sheet.getRange;
+    sheet.getLastRow = () => { calls.push('read:' + name); return getLastRow(); };
+    sheet.getRange = (...args) => {
+      const range = getRange(...args), setValues = range.setValues;
+      range.setValues = values => { calls.push('write:' + name); return setValues.call(range, values); };
+      return range;
+    };
+  }
+  const event = { operationId: 'journal-1', entityId: 'PRJ-1', eventKind: 'created', afterRevision: 'v1' };
+  const result = { id: 'PRJ-1', version: 'v1' };
+  const systemRows = h.api.readSystemRows_(h.book);
+  h.api.SheetFlowHistory.recordAndReceipt(h.book, event, 'journal-1', result, systemRows);
+  const firstWrite = calls.findIndex(call => call.startsWith('write:'));
+  assert.deepEqual(calls.slice(firstWrite), ['write:Change History', 'write:_System']);
+  assert.equal(h.api.SheetFlowHistory.findReceipt(h.book, 'journal-1').result.version, 'v1');
+  assert.equal(h.tabs['Change History'].rows.at(-1)[1], 'journal-1');
+  const receiptRow = h.tabs._System.rows.find(row => row[0] === 'IDEMPOTENCY:journal-1');
+  const timestamp = receiptRow[2], count = h.tabs._System.rows.length;
+  h.api.SheetFlowHistory.receipt(h.book, 'journal-1', { ...result, version: 'v2' });
+  assert.equal(h.tabs._System.rows.length, count);
+  assert.equal(receiptRow[2], timestamp);
+  assert.equal(h.api.SheetFlowHistory.findReceipt(h.book, 'journal-1').result.version, 'v2');
+});
+
+test('journal destination lookup failure writes neither history nor receipt', () => {
+  const h = harness(); loadBrowserServices(h);
+  const historyCount = h.tabs['Change History'].rows.length, systemCount = h.tabs._System.rows.length;
+  h.tabs._System.getLastRow = () => { throw new Error('Destination unavailable'); };
+  assert.throws(() => h.api.SheetFlowHistory.recordAndReceipt(h.book, { entityId: 'PRJ-1' }, 'failed-journal', { id: 'PRJ-1' }, []), /Destination unavailable/);
+  assert.equal(h.tabs['Change History'].rows.length, historyCount);
+  assert.equal(h.tabs._System.rows.length, systemCount);
+});
+
 for (const schema of ['1', '2']) test(`schema ${schema} project payload converts Sheet timestamps and omits internal records`, () => {
   const h = harness(); h.properties.set('SHEETFLOW_ACTIVE_SCHEMA', schema); loadBrowserServices(h);
   if (schema === '2') addRecord(h.tabs['Projects and Epics'], { ID: 'PROJECT-1', 'Entity Kind': 'Project', Title: 'Project', Active: true, Revision: 1 });

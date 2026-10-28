@@ -2,7 +2,7 @@
 var SheetFlowHistory = (function () {
   'use strict';
   var receiptPrefix = 'IDEMPOTENCY:';
-  function record(book, event) {
+  function prepareRecord(book, event) {
     var sheet = book.getSheetByName('Change History');
     if (!sheet) return null;
     var row = [
@@ -12,19 +12,36 @@ var SheetFlowHistory = (function () {
       event.beforeRevision || '', event.afterRevision || '',
       JSON.stringify(event.changedFields || []), JSON.stringify(event.details || {})
     ];
-    sheet.getRange(Math.max(2, sheet.getLastRow() + 1), 1, 1, row.length).setValues([row]);
-    return row[0];
+    return { range: sheet.getRange(Math.max(2, sheet.getLastRow() + 1), 1, 1, row.length), values: [row], eventId: row[0] };
   }
-  function receipt(book, operationId, result, systemRows) {
+  function prepareReceipt(book, operationId, result, systemRows) {
     if (!operationId) return;
     var sheet = book.getSheetByName('_System');
     if (!sheet) return;
     var key = receiptPrefix + operationId;
-    var rows = systemRows || (sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues() : []);
+    var lastRow = sheet.getLastRow();
+    var rows = systemRows || (lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 2).getValues() : []);
     var value = JSON.stringify({ savedAt: new Date().toISOString(), result: result });
     var index = rows.findIndex(function (row) { return String(row[0]) === key; });
-    if (index >= 0) sheet.getRange(index + 2, 2).setValue(value);
-    else sheet.getRange(Math.max(2, sheet.getLastRow() + 1), 1, 1, 3).setValues([[key, value, new Date()]]);
+    return index >= 0
+      ? { range: sheet.getRange(index + 2, 2), values: [[value]] }
+      : { range: sheet.getRange(Math.max(2, lastRow + 1), 1, 1, 3), values: [[key, value, new Date()]] };
+  }
+  function writePrepared(entry) { if (entry) entry.range.setValues(entry.values); }
+  function record(book, event) {
+    var entry = prepareRecord(book, event); writePrepared(entry);
+    return entry ? entry.eventId : null;
+  }
+  function receipt(book, operationId, result, systemRows) {
+    writePrepared(prepareReceipt(book, operationId, result, systemRows));
+  }
+  /** Resolve both destinations before writing so a metadata read cannot flush the first write. Caller holds the script lock. */
+  function recordAndReceipt(book, event, operationId, result, systemRows) {
+    var historyEntry = prepareRecord(book, event);
+    var receiptEntry = prepareReceipt(book, operationId, result, systemRows);
+    writePrepared(historyEntry);
+    writePrepared(receiptEntry);
+    return historyEntry ? historyEntry.eventId : null;
   }
   function findReceipt(book, operationId, systemRows) {
     if (!operationId) return null;
@@ -47,7 +64,7 @@ var SheetFlowHistory = (function () {
     return { items: items, nextOffset: offset + items.length < rows.length ? offset + items.length : null };
   }
   function actorId_() { try { return Session.getActiveUser().getEmail() || 'unknown'; } catch (ignore) { return 'unknown'; } }
-  return { record: record, receipt: receipt, findReceipt: findReceipt, list: list };
+  return { record: record, receipt: receipt, recordAndReceipt: recordAndReceipt, findReceipt: findReceipt, list: list };
 })();
 
 function getTaskHistory(entityId, limit, offset) {

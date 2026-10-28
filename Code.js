@@ -340,8 +340,9 @@ function saveIssueLocked_(book, input, expectedVersion, timing) {
   timing.verifyMs = Date.now() - mark; mark = Date.now();
   var changedFields = TrackerCore.fields.filter(function (field) { return !current || current[field.key] !== saved[field.key]; }).map(function (field) { return field.key; });
   if (!current || current.taskTypeId !== saved.taskTypeId) changedFields.push('taskTypeId');
-  history.record(book, { operationId: operationId, entityId: saved.id, eventKind: current ? 'updated' : 'created', beforeRevision: current && current.version, afterRevision: saved.version, changedFields: changedFields, details: { source: 'app' } });
-  history.receipt(book, operationId, saved, systemRows);
+  var event = { operationId: operationId, entityId: saved.id, eventKind: current ? 'updated' : 'created', beforeRevision: current && current.version, afterRevision: saved.version, changedFields: changedFields, details: { source: 'app' } };
+  if (history.recordAndReceipt) history.recordAndReceipt(book, event, operationId, saved, systemRows);
+  else { history.record(book, event); history.receipt(book, operationId, saved, systemRows); }
   SpreadsheetApp.flush();
   timing.journalMs = Date.now() - mark;
   return saved;
@@ -764,7 +765,7 @@ function versionedRepositoryActive_(book, systemRows) {
   return active;
 }
 function repositoryPropertyKey_(base) {
-  var environment = typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.config().name : '';
+  var environment = typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.currentName() : '';
   return environment ? base + '_' + String(environment).toUpperCase() : base;
 }
 function getRepositoryProperty_(base) { return PropertiesService.getScriptProperties().getProperty(repositoryPropertyKey_(base)) || ''; }

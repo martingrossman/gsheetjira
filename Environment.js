@@ -20,8 +20,8 @@ var SheetFlowEnvironment = (function () {
     return config();
   }
   function config() {
-    var name = currentName();
-    return { name: name, spreadsheetId: spreadsheetId(name), configured: Boolean(spreadsheetId(name)), scriptId: ScriptApp.getScriptId() };
+    var name = currentName(), id = spreadsheetId(name);
+    return { name: name, spreadsheetId: id, configured: Boolean(id), scriptId: ScriptApp.getScriptId() };
   }
   function health(book) {
     var triggers = ScriptApp.getProjectTriggers().map(function (trigger) {
@@ -37,7 +37,7 @@ var SheetFlowEnvironment = (function () {
       checkedAt: new Date().toISOString()
     };
   }
-  return { names: names, config: config, configure: configure, spreadsheetId: spreadsheetId, health: health };
+  return { names: names, currentName: currentName, config: config, configure: configure, spreadsheetId: spreadsheetId, health: health };
 })();
 
 function configureTrackerEnvironment(environment, spreadsheetId) {
