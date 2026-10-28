@@ -17,6 +17,7 @@
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 .epic-nav{grid-template-columns:minmax(0,1fr)}.epic-nav button{max-width:100%;overflow:hidden}
 @media(max-width:520px){.gantt-grid{--label-width:195px}.gantt-legend{flex-wrap:wrap}}
+.pending-card{cursor:default;border-style:dashed;box-shadow:none}.pending-card .card-id{color:var(--primary)}.pending-card.failed{border-color:var(--red)}.pending-card.failed .card-id,.pending-error{color:var(--red)}.pending-error{font-size:10px;overflow-wrap:anywhere}.pending-card .button{font-size:10px}
 </style>
 <style>.swimlanes{display:grid;gap:18px}.swimlane{border:1px solid var(--line);border-radius:9px;background:var(--canvas);padding:0 10px 10px}.swimlane-header{width:100%;display:flex;align-items:center;gap:8px;padding:11px 5px;border:0;background:transparent;color:var(--ink);font:inherit;font-size:11px;text-align:left;cursor:pointer}.swimlane-header:focus-visible{outline:2px solid var(--primary);outline-offset:1px;border-radius:5px}.swimlane-progress{margin-left:auto;color:var(--muted);font-size:9px}.swimlane-toggle{display:inline-flex;flex:0 0 24px;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid var(--line);border-radius:5px;color:var(--muted);background:var(--surface);font-size:16px;line-height:1}.swimlane-header:hover .swimlane-toggle{background:var(--primary-soft);color:var(--primary)}.swimlane .board{min-height:0;padding-bottom:0}.swimlane.collapsed{padding-bottom:0}.swimlane.collapsed .swimlane-header{padding-bottom:13px}</style>
 <style>.comments-section{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}.comment-item{border-bottom:1px solid var(--line);padding:9px 0}.comment-item small{display:block;color:var(--muted);font-size:9px;margin-bottom:5px}.comment-item textarea,#new-comment{display:block;width:100%;min-height:54px;border:1px solid var(--line);border-radius:5px;padding:7px;font-size:10px;resize:vertical;margin-bottom:5px}.comment-item .button{height:26px;font-size:9px;padding:0 9px}</style>
@@ -397,6 +398,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     return order;
   }
   const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], selectedIssueIds: [], bulkEditDraft: null, pendingDuplicate: null, savedViews: [], activeSavedView: '', visibleColumns: defaultSheetColumnOrder.slice(), collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const quickSavesInFlight = new Set();
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
@@ -704,7 +706,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   function hasPendingSaves() { return state.activeSaves > 0 || Object.keys(state.saveQueues).length > 0; }
   function drainQuickQueue() {
     if (state.busy || hasPendingSaves() || !state.quickQueue.length) return;
-    const next = state.quickQueue.shift(), input = $('#quick-title');
+    const next = state.quickQueue.shift(), input = document.createElement('input');
     localStorage.setItem(quickQueueStorageKey, JSON.stringify(state.quickQueue));
     input.value = next.title; input.dataset.quickKind = next.kind; input.dataset.quickParentId = next.parentId || '';
     input.dataset.quickDraftKey = next.draftKey;
@@ -906,11 +908,13 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const operationId = input.operationId || savedDraft?.operationId || newOperationId();
     const requestInput = { ...input, operationId };
     const before = input.id ? issueById(input.id) : null, undoBefore = before ? undoSnapshot(before) : null;
+    const quickCreate = !input.id && String(input._draftKey || '').startsWith('quick-');
+    if (quickCreate) quickSavesInFlight.add(queueKey);
     saveDraft(requestInput, version, operationId);
     if (input.id) {
       const current = issueById(input.id);
       if (current) { state.issues = state.issues.map(issue => issue.id === input.id ? { ...issue, ...requestInput } : issue); render(); }
-    }
+    } else if (quickCreate) render();
     const previous = state.saveQueues[queueKey] || Promise.resolve();
     const job = previous.catch(() => null).then(async () => {
       const resolvedId = requestInput.id || state.pendingCreateIds[queueKey];
@@ -941,8 +945,17 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
         $('#error-banner').hidden = true;
         syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); render(); notify(message);
         return result;
-      } catch (error) { showError(error, effectiveDraftKey); throw error; }
-      finally { state.activeSaves = Math.max(0, state.activeSaves - 1); queueMicrotask(drainQuickQueue); }
+      } catch (error) {
+        if (quickCreate) {
+          if (state.drafts[effectiveDraftKey]) {
+            state.drafts[effectiveDraftKey].error = error.message || String(error);
+            localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
+          }
+          render(); syncText('Could not sync', true);
+        } else showError(error, effectiveDraftKey);
+        throw error;
+      }
+      finally { quickSavesInFlight.delete(queueKey); state.activeSaves = Math.max(0, state.activeSaves - 1); queueMicrotask(drainQuickQueue); }
     });
     state.saveQueues[queueKey] = job;
     job.finally(() => {
@@ -962,7 +975,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     input.value = ''; delete input.dataset.quickDraftKey;
     if (state.busy || hasPendingSaves()) {
       state.quickQueue.push({ title, status, kind, parentId, draftKey: quickDraftKey });
-      localStorage.setItem(quickQueueStorageKey, JSON.stringify(state.quickQueue)); syncText('Work item queued…'); return;
+      localStorage.setItem(quickQueueStorageKey, JSON.stringify(state.quickQueue)); render(); syncText('Work item queued…'); return;
     }
     try { await persist({ summary: title, type: kind, taskTypeId: defaultTaskTypeId(), status, priority: 'Medium', parentId, _draftKey: quickDraftKey }, undefined, `${kind} added`); }
     catch (ignore) {}
@@ -1099,6 +1112,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   }
   function render() {
     if (!state.ready) return;
+    const quickEntryState = state.view === 'kanban' ? captureBoardQuickEntries() : null;
     closeGanttQuickPopover();
     renderSavedViews();
     renderFilters();
@@ -1117,8 +1131,8 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     $('#epic-nav').innerHTML = state.issues.filter(i => i.type === 'Epic').map(i => `<button data-epic="${escape(i.id)}" class="${state.epic === i.id ? 'active' : ''}" title="${escape(i.summary)}"><span class="epic-dot"></span><span class="epic-name">${escape(i.summary)}</span></button>`).join('') || '<span class="nav-caption">No epics yet</span>';
     $('#issue-count').textContent = `${issues.length} of ${state.issues.length} issues`;
     $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Drag row grips or use arrows to reorder siblings, regardless of status. Moving a row switches to Manual order. Click an issue ID for details.', gantt: 'Double-click labels or bars to edit. Drag bars to reschedule; Epic spans follow child schedules.' }[state.view];
-    if (!state.issues.length) { $('#view-content').innerHTML = `<div class="empty-state">${icon('stack')}<h2>A fresh start for your next project.</h2><p>Create your first epic, story, task, or bug.</p><button class="button primary" data-new="Backlog">Create your first issue</button></div>`; return; }
-    if (!issues.length) { $('#view-content').innerHTML = '<div class="empty-state"><h2>No issues match these filters.</h2><p>Try a different search, or clear the filters to see everything.</p><button class="button secondary" data-clear>Clear filters</button></div>'; return; }
+    if (!state.issues.length && !(state.view === 'kanban' && pendingQuickTasks().length)) { $('#view-content').innerHTML = `<div class="empty-state">${icon('stack')}<h2>A fresh start for your next project.</h2><p>Create your first epic, story, task, or bug.</p><button class="button primary" data-new="Backlog">Create your first issue</button></div>`; return; }
+    if (!issues.length && !(state.view === 'kanban' && pendingQuickTasks().length)) { $('#view-content').innerHTML = '<div class="empty-state"><h2>No issues match these filters.</h2><p>Try a different search, or clear the filters to see everything.</p><button class="button secondary" data-clear>Clear filters</button></div>'; return; }
     const content = $('#view-content'), oldScroll = content.querySelector('.board, .table-wrap, .gantt-viewport');
     const scroll = oldScroll ? { left: oldScroll.scrollLeft, top: oldScroll.scrollTop } : null;
     if (state.view === 'kanban') renderBoard(issues);
@@ -1126,6 +1140,45 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (state.view === 'gantt') renderGantt(issues);
     const nextScroll = content.querySelector('.board, .table-wrap, .gantt-viewport');
     if (scroll && nextScroll) { nextScroll.scrollLeft = scroll.left; nextScroll.scrollTop = scroll.top; }
+    if (quickEntryState) restoreBoardQuickEntries(quickEntryState);
+  }
+  function boardQuickEntryKey(element) { return JSON.stringify([element.closest('.swimlane')?.dataset.epicLane || '', element.closest('.column')?.dataset.status || '']); }
+  function captureBoardQuickEntries() {
+    const active = document.activeElement, activeForm = active?.closest('.column-quick-add');
+    return {
+      entries: $$('.column-quick-add').map(form => ({ key: boardQuickEntryKey(form), title: form.querySelector('input').value, kind: form.querySelector('select').value })),
+      boards: $$('.board').map(board => ({ lane: board.closest('.swimlane')?.dataset.epicLane || '', left: board.scrollLeft, top: board.scrollTop })),
+      focus: activeForm ? { key: boardQuickEntryKey(activeForm), tag: active.tagName === 'SELECT' ? 'select' : 'input', start: active.selectionStart, end: active.selectionEnd, top: activeForm.querySelector('input').getBoundingClientRect().top } : null
+    };
+  }
+  function restoreBoardQuickEntries(snapshot) {
+    const forms = $$('.column-quick-add');
+    snapshot.entries.forEach(entry => {
+      const form = forms.find(form => boardQuickEntryKey(form) === entry.key);
+      if (form) { form.querySelector('input').value = entry.title; form.querySelector('select').value = entry.kind; }
+    });
+    snapshot.boards.forEach(saved => {
+      const board = $$('.board').find(board => (board.closest('.swimlane')?.dataset.epicLane || '') === saved.lane);
+      if (board) { board.scrollLeft = saved.left; board.scrollTop = saved.top; }
+    });
+    if (!snapshot.focus) return;
+    const form = forms.find(form => boardQuickEntryKey(form) === snapshot.focus.key), input = form?.querySelector(snapshot.focus.tag);
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    if (input.tagName === 'INPUT' && Number.isInteger(snapshot.focus.start)) input.setSelectionRange(snapshot.focus.start, snapshot.focus.end);
+    // Keep quick-add at the same viewport position when cards grow above it.
+    const delta = form.querySelector('input').getBoundingClientRect().top - snapshot.focus.top;
+    if (delta) window.scrollBy(0, delta);
+  }
+  function pendingQuickTasks() {
+    return [
+      ...Object.entries(state.drafts).filter(([key, draft]) => key.startsWith('quick-') && !draft.input.id).map(([key, draft]) => ({ id: `pending:${key}`, draftKey: key, summary: draft.input.summary, type: draft.input.type, status: draft.input.status, parentId: draft.input.parentId || '', pendingState: draft.error || !quickSavesInFlight.has(key) ? 'failed' : 'saving', error: draft.error || (!quickSavesInFlight.has(key) ? 'Save is unconfirmed. Retry to check safely.' : '') })),
+      ...state.quickQueue.map(item => ({ id: `pending:${item.draftKey}`, draftKey: item.draftKey, summary: item.title, type: item.kind, status: item.status, parentId: item.parentId || '', pendingState: 'queued' }))
+    ];
+  }
+  function pendingQuickCard(issue) {
+    const label = issue.pendingState === 'failed' ? 'Save unconfirmed' : issue.pendingState === 'queued' ? 'Queued…' : 'Saving…';
+    return `<article class="card pending-card ${issue.pendingState}" data-pending-quick="${escape(issue.draftKey)}" aria-busy="${issue.pendingState !== 'failed'}"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${label}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${issue.error ? `<p class="pending-error">${escape(issue.error)}</p><button type="button" class="button subtle" data-retry-quick="${escape(issue.draftKey)}">Retry save</button>` : ''}</article>`;
   }
   function card(issue) {
     const prioritySymbol = ['Highest', 'High'].includes(issue.priority) ? '↑' : ['Low', 'Lowest'].includes(issue.priority) ? '↓' : '−';
@@ -1135,14 +1188,15 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     return `<article class="card" draggable="true" tabindex="0" role="button" data-issue="${escape(issue.id)}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight" aria-label="${escape(issue.id + ': ' + issue.summary + '. Hold Alt and use arrows to reorder or change status.')}" title="Alt + ↑/↓ reorder · Alt + ←/→ change status"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels">${taskTypeBadge(issue.taskTypeId)}${C.split(issue.labels).slice(0, 2).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${dates.dueDate && dates.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${dates.dueDate ? escape(shortDate(dates.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}</div></article>`;
   }
   function renderBoard(issues) {
-    const renderColumns = items => C.statuses.map((status, index) => {
-      const cards = items.filter(i => i.status === status);
-      return `<section class="column" data-status="${status}" aria-label="${status}" style="--status-color:${statusColors[index]}"><h2 class="column-header"><span class="status-dot"></span>${status}<span class="column-count">${cards.length}</span><button data-new="${status}" aria-label="Open full task editor for ${status}">+</button></h2><div class="card-list">${cards.map(card).join('') || '<div class="column-empty">A little room for what’s next</div>'}</div><div class="column-quick-add"><select data-quick-kind="${status}" aria-label="New work item kind"><option value="Task">Task</option><option value="Story">Story</option><option value="Epic">Epic</option></select><input data-quick-title="${status}" maxlength="250" placeholder="Add a task, story, or epic…" aria-label="Add task, story, or epic to ${status}"><button data-quick-add="${status}" aria-label="Add task, story, or epic to ${status}">＋</button></div></section>`;
+    const pending = pendingQuickTasks();
+    const renderColumns = (items, pendingItems = pending) => C.statuses.map((status, index) => {
+      const cards = items.filter(i => i.status === status), pendingCards = pendingItems.filter(i => i.status === status);
+      return `<section class="column" data-status="${status}" aria-label="${status}" style="--status-color:${statusColors[index]}"><h2 class="column-header"><span class="status-dot"></span>${status}<span class="column-count">${cards.length + pendingCards.length}</span><button data-new="${status}" aria-label="Open full task editor for ${status}">+</button></h2><div class="card-list">${cards.map(card).join('')}${pendingCards.map(pendingQuickCard).join('')}${!cards.length && !pendingCards.length ? '<div class="column-empty">A little room for what’s next</div>' : ''}</div><div class="column-quick-add"><select data-quick-kind="${status}" aria-label="New work item kind"><option value="Task">Task</option><option value="Story">Story</option><option value="Epic">Epic</option></select><input data-quick-title="${status}" maxlength="250" placeholder="Add a task, story, or epic…" aria-label="Add task, story, or epic to ${status}"><button data-quick-add="${status}" aria-label="Add task, story, or epic to ${status}">＋</button></div></section>`;
     }).join('');
     if (!state.swimlanes) { $('#view-content').innerHTML = `<div class="board">${renderColumns(issues)}</div>`; return; }
     $('#view-content').innerHTML = `<div class="swimlanes">${epicLanes(issues, true).map(lane => {
       const collapsed = laneCollapsed(lane);
-      return `<section class="swimlane${collapsed ? ' collapsed' : ''}" data-epic-lane="${escape(lane.id)}">${renderSwimlaneHeader(lane)}${collapsed ? '' : `<div class="board">${renderColumns(lane.items)}</div>`}</section>`;
+      return `<section class="swimlane${collapsed ? ' collapsed' : ''}" data-epic-lane="${escape(lane.id)}">${renderSwimlaneHeader(lane)}${collapsed ? '' : `<div class="board">${renderColumns(lane.items, pending.filter(issue => lane.id ? inEpicWithin(issue, lane.id) : !state.issues.some(epic => epic.type === 'Epic' && inEpicWithin(issue, epic.id))))}</div>`}</section>`;
     }).join('')}</div>`;
   }
   function inEpicWithin(issue, epicId) {
@@ -1714,6 +1768,12 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $('#close-help').addEventListener('click', () => $('#help-dialog').close());
   $('#view-content').addEventListener('click', event => {
     if (state.busy || Date.now() < suppressClickUntil) return;
+    const retryQuick = event.target.closest('[data-retry-quick]');
+    if (retryQuick) {
+      const draft = state.drafts[retryQuick.dataset.retryQuick];
+      if (draft && !quickSavesInFlight.has(retryQuick.dataset.retryQuick)) persist(draft.input, draft.version, 'Work item saved').catch(() => {});
+      return;
+    }
     if (state.view === 'sheet' && event.target.closest('.sheet-columns-menu > summary')) { state.sheetColumnsMenuOpen = !state.sheetColumnsMenuOpen; return; }
     const sheetMove = event.target.closest('[data-sheet-move]');
     if (state.view === 'sheet' && sheetMove) { moveSheetWithKeyboard(sheetMove.dataset.sheetMoveId, sheetMove.dataset.sheetMove); return; }
