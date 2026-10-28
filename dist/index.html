@@ -884,7 +884,9 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (state.busy || hasPendingSaves() || timelineDrag) return;
     setBusy(true); if (!quiet) syncText('Loading…');
     try {
-      const project = await rpc('getProject'); state.issues = project.issues.map(withDraft); state.comments = project.comments || {}; state.settings = project.settings || []; state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
+      const project = await rpc('getProject');
+      if (!project || !Array.isArray(project.issues)) throw new Error('The server returned no valid project data. Reload the latest tracker deployment. If this continues, run startupHealthCheck in Apps Script.');
+      state.issues = project.issues.map(withDraft); state.comments = project.comments || {}; state.settings = project.settings || []; state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
       $('#error-banner').hidden = true;
       $('#connection-title').textContent = isCloud ? 'Connected to Google Sheets' : 'Browser demo';
       $('#connection-detail').textContent = isCloud ? 'Shared data. Three ways to work.' : 'Sample data saved on this browser.';

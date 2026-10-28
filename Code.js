@@ -71,7 +71,7 @@ function getProject() {
     var book = getBook_();
     var issues = readIssues_(book), comments = {};
     if (typeof SheetFlowComments !== 'undefined') issues.forEach(function (issue) { comments[issue.id] = SheetFlowComments.read(book, issue.id); });
-    return { issues: issues, comments: comments, settings: typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [], spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() };
+    return browserValue_({ issues: issues.map(clientIssue_), comments: comments, settings: typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [], spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() });
   });
 }
 /** expectedVersion prevents an old browser tab overwriting a newer row. */
@@ -131,7 +131,7 @@ function updateIssuesBatch(items) {
     var acceptedReceipts = receipts.filter(Boolean);
     if (acceptedReceipts.length) {
       if (acceptedReceipts.length !== items.length) return { items: [], errors: [{ id: '', message: 'A previous bulk operation is only partly recorded. Refresh the project before retrying.' }], rejected: true };
-      return { items: acceptedReceipts.map(function (receipt, index) { return { id: items[index].id, issue: receipt.result }; }), errors: [], replayed: true };
+      return { items: acceptedReceipts.map(function (receipt, index) { return { id: items[index].id, issue: clientIssue_(receipt.result) }; }), errors: [], replayed: true };
     }
     var projected = issues.map(function (issue) {
       var change = prepared.find(function (entry) { return entry.current.id === issue.id; });
@@ -162,7 +162,7 @@ function updateIssuesBatch(items) {
     }
     var savedIssues = readIssues_(book), results = [];
     prepared.forEach(function (entry) {
-      var saved = savedIssues.find(function (issue) { return issue.id === entry.current.id; });
+      var saved = clientIssue_(savedIssues.find(function (issue) { return issue.id === entry.current.id; }));
       var changedFields = TrackerCore.fields.filter(function (field) { return entry.current[field.key] !== saved[field.key]; }).map(function (field) { return field.key; });
       if (entry.current.taskTypeId !== saved.taskTypeId) changedFields.push('taskTypeId');
       history.record(book, { operationId: entry.operationId, entityId: saved.id, eventKind: 'updated', beforeRevision: entry.current.version, afterRevision: saved.version, changedFields: changedFields, details: { source: 'app', bulk: true } });
@@ -179,7 +179,7 @@ function duplicateIssue(id, expectedVersion, includeSubtasks, operationId) {
     operationId = String(operationId || '');
     if (!operationId) throw new Error('A duplicate operation ID is required.');
     var book = getBook_(), history = historyService_(), previousReceipt = history.findReceipt(book, operationId);
-    if (previousReceipt) return previousReceipt.result;
+    if (previousReceipt) return { rootId: previousReceipt.result.rootId, items: previousReceipt.result.items.map(function (entry) { return { sourceId: entry.sourceId, issue: clientIssue_(entry.issue) }; }) };
     var issues = readIssues_(book), source = issues.find(function (issue) { return issue.id === id; });
     if (!source) throw new Error('This issue no longer exists. Refresh the project.');
     if (!expectedVersion || source.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh before duplicating it.');
@@ -232,7 +232,7 @@ function duplicateIssue(id, expectedVersion, includeSubtasks, operationId) {
     }
     var savedIssues = versioned ? readVersionedIssues_(book, false) : readIssues_(book);
     var results = copies.map(function (entry) {
-      var saved = savedIssues.find(function (issue) { return issue.id === entry.issue.id; });
+      var saved = clientIssue_(savedIssues.find(function (issue) { return issue.id === entry.issue.id; }));
       history.record(book, { operationId: operationId + ':' + entry.sourceId, entityId: saved.id, eventKind: 'created', beforeRevision: '', afterRevision: saved.version, changedFields: TrackerCore.fields.map(function (field) { return field.key; }).concat(['taskTypeId']), details: { source: 'app', duplicateOf: entry.sourceId, operationId: operationId } });
       return { sourceId: entry.sourceId, issue: saved };
     });
@@ -297,7 +297,7 @@ function undoDuplicateIssues(duplicateOperationId, expectedItems, undoOperationI
 function saveIssueLocked_(book, input, expectedVersion) {
   var operationId = input && input.operationId, history = historyService_();
   var previousReceipt = history.findReceipt(book, operationId);
-  if (previousReceipt) return previousReceipt.result;
+  if (previousReceipt) return clientIssue_(previousReceipt.result);
   var issues = readIssues_(book);
   var current = input.id ? issues.find(function (i) { return i.id === input.id; }) : null;
   if (input.id && !current) throw new Error('This issue no longer exists. Refresh the project.');
@@ -307,7 +307,7 @@ function saveIssueLocked_(book, input, expectedVersion) {
   TrackerCore.validate(issue, issues);
   writeIssue_(book, issue, current);
   SpreadsheetApp.flush();
-  var saved = readIssues_(book).find(function (i) { return i.id === issue.id; });
+  var saved = clientIssue_(readIssues_(book).find(function (i) { return i.id === issue.id; }));
   if (!versionedRepositoryActive_(book) && typeof SheetFlowSettings !== 'undefined') SheetFlowSettings.setTaskType(book, saved.id, issue.taskTypeId);
   var changedFields = TrackerCore.fields.filter(function (field) { return !current || current[field.key] !== saved[field.key]; }).map(function (field) { return field.key; });
   if (!current || current.taskTypeId !== saved.taskTypeId) changedFields.push('taskTypeId');
@@ -322,7 +322,7 @@ function moveIssue(id, move, expectedVersion, operationId) {
     var book = getBook_(), history = historyService_();
     operationId = operationId || move && move.operationId || '';
     var previousReceipt = history.findReceipt(book, operationId);
-    if (previousReceipt) return previousReceipt.result;
+    if (previousReceipt) return clientIssue_(previousReceipt.result);
     var issues = readIssues_(book), current = issues.find(function (item) { return item.id === id; });
     if (!current) throw new Error('This issue no longer exists. Refresh the project.');
     if (current.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh before moving it.');
@@ -332,7 +332,7 @@ function moveIssue(id, move, expectedVersion, operationId) {
     var issue = TrackerCore.prepare(input, current, today_(book), new Date().toISOString());
     TrackerCore.validate(issue, issues);
     writeIssue_(book, issue, current); SpreadsheetApp.flush();
-    var saved = readIssues_(book).find(function (item) { return item.id === id; });
+    var saved = clientIssue_(readIssues_(book).find(function (item) { return item.id === id; }));
     var changedFields = ['status', 'parentId', 'rank'].filter(function (key) { return current[key] !== saved[key]; });
     history.record(book, { operationId: operationId, entityId: id, eventKind: 'moved', beforeRevision: current.version, afterRevision: saved.version, changedFields: changedFields, details: { source: 'app', move: true } });
     history.receipt(book, operationId, saved);
@@ -367,7 +367,7 @@ function restoreIssue(id, expectedVersion) {
     if (issue.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh before restoring.');
     restoreVersionedIssue_(book, issue);
     SpreadsheetApp.flush();
-    var restored = readIssues_(book).find(function (item) { return item.id === id; });
+    var restored = clientIssue_(readIssues_(book).find(function (item) { return item.id === id; }));
     historyService_().record(book, { entityId: id, eventKind: 'restored', beforeRevision: issue.version, afterRevision: restored.version, changedFields: [], details: { source: 'app' } });
     return restored;
   });
@@ -678,6 +678,15 @@ function getBook_() {
 }
 function environmentSpreadsheetId_() {
   return typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.spreadsheetId() : PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+}
+/** Plain browser data: Dates become ISO strings before crossing google.script.run. */
+function browserValue_(value) { return JSON.parse(JSON.stringify(value)); }
+/** Keep storage metadata and raw Sheet records on the server. */
+function clientIssue_(issue) {
+  var result = {};
+  TrackerCore.fields.forEach(function (field) { result[field.key] = issue[field.key]; });
+  result.taskTypeId = issue.taskTypeId; result.version = issue.version;
+  return browserValue_(result);
 }
 function historyService_() {
   if (typeof SheetFlowHistory !== 'undefined') return SheetFlowHistory;

@@ -106,6 +106,8 @@ Google documents deployment and execution identities in its [web app guide](http
 
 After source changes, rebuild, push, then **Deploy → Manage deployments → Edit → New version → Deploy**. Pushing alone does not update a versioned production deployment.
 
+If the tracker opens but reports **Cannot read properties of null (reading 'issues')**, run `startupHealthCheck` and `getProject` in the Apps Script editor. Successful editor execution does not verify browser transport: `google.script.run` rejects raw `Date` values, including nested timestamps. Current sources convert response timestamps to ISO strings and omit internal issue records. Upload the complete current sources, then reload `/dev`; for `/exec`, update the existing deployment to a new version before reloading. The browser now shows a connection diagnostic for a missing/invalid project response. Spreadsheet cells retain native date values.
+
 ### Schema v2 migration
 
 The repository now includes a non-destructive schema migration. Run **SheetFlow → Check schema health**, then **Preview v2 migration**. Resolve every duplicate or invalid row before choosing **Migrate legacy Issues to v2 tabs**. Migration preserves IDs, hierarchy, and each full legacy record in `Legacy JSON`; repeated runs are safe when the targets still match the source. It leaves `Issues` intact.

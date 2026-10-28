@@ -67,6 +67,58 @@ function addRecord(sheet, record) {
   sheet.rows.push(headers.map(header => record[header] ?? ''));
 }
 
+function assertBrowserValue(value, path = 'response') {
+  assert.ok(!(value instanceof Date), `${path} must not contain a Date`);
+  if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return;
+  assert.equal(typeof value, 'object', `${path} must contain browser-safe values`);
+  Object.entries(value).forEach(([key, child]) => assertBrowserValue(child, `${path}.${key}`));
+}
+
+function loadBrowserServices(h) {
+  for (const name of ['Settings', 'Comments', 'History']) vm.runInContext(fs.readFileSync(require.resolve(`../${name}.js`), 'utf8'), h.api);
+  h.api.SheetFlowSettings.ensure(h.book);
+}
+
+for (const schema of ['1', '2']) test(`schema ${schema} project payload converts Sheet timestamps and omits internal records`, () => {
+  const h = harness(); h.properties.set('SHEETFLOW_ACTIVE_SCHEMA', schema); loadBrowserServices(h);
+  if (schema === '2') addRecord(h.tabs['Projects and Epics'], { ID: 'PROJECT-1', 'Entity Kind': 'Project', Title: 'Project', Active: true, Revision: 1 });
+  const task = h.api.saveIssue({ summary: 'Browser transport', startDate: '2026-10-28', dueDate: '2026-10-29' });
+  h.api.addTaskComment(task.id, 'A stored comment');
+  const project = h.api.getProject();
+  assertBrowserValue(project);
+  assert.equal(project.issues[0].startDate, '2026-10-28');
+  assert.ok(project.issues[0].version);
+  assert.equal(Object.keys(project.issues[0]).some(key => key.startsWith('_')), false);
+  assert.match(project.settings[0].updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(project.comments[task.id][0].createdAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.ok(h.tabs.Settings.rows[1][7] instanceof Date, 'stored timestamps remain native Sheet dates');
+  assert.ok(h.tabs.Comments.rows[1][4] instanceof Date);
+  if (schema === '2') assert.ok(h.api.readVersionedIssues_(h.book, false)[0]._record['Created At'] instanceof Date);
+});
+
+test('v2 mutation, comment, history, and replay results are safe for google.script.run', () => {
+  const h = harness(); loadBrowserServices(h);
+  addRecord(h.tabs['Projects and Epics'], { ID: 'PROJECT-1', 'Entity Kind': 'Project', Title: 'Project', Active: true, Revision: 1 });
+  let task = h.api.saveIssue({ summary: 'RPC task', operationId: 'rpc-create' });
+  assertBrowserValue(task); assert.equal(task._record, undefined);
+  assertBrowserValue(h.api.saveIssue({ summary: 'Ignored retry', operationId: 'rpc-create' }));
+  task = h.api.moveIssue(task.id, { rank: 2000 }, task.version, 'rpc-move'); assertBrowserValue(task);
+  const batch = h.api.updateIssuesBatch([{ id: task.id, expectedVersion: task.version, operationId: 'rpc-bulk', updates: { priority: 'High' } }]);
+  assertBrowserValue(batch); task = batch.items[0].issue;
+  const duplicate = h.api.duplicateIssue(task.id, task.version, false, 'rpc-copy'); assertBrowserValue(duplicate);
+  const copied = duplicate.items[0].issue;
+  assert.equal(copied._record, undefined);
+  assertBrowserValue(h.api.duplicateIssue(task.id, task.version, false, 'rpc-copy'));
+  task = h.api.reorderIssue(task.id, copied.id, task.version); assertBrowserValue(task);
+  const comment = h.api.addTaskComment(task.id, 'Initial comment'); assertBrowserValue(comment);
+  assertBrowserValue(h.api.updateTaskComment(comment.id, 'Edited comment'));
+  assertBrowserValue(h.api.getTaskComments(task.id));
+  const archived = h.api.deleteIssue(task.id, task.version); assertBrowserValue(archived);
+  assertBrowserValue(h.api.restoreIssue(task.id, archived.version));
+  const history = h.api.getTaskHistory(task.id, 50, 0); assertBrowserValue(history);
+  assert.match(history.items[0].timestamp, /^\d{4}-\d{2}-\d{2}T/);
+});
+
 test('v2 repository reads hierarchical issues, writes edits, and supports archive restore', () => {
   const h = harness();
   addRecord(h.tabs['Projects and Epics'], { ID: 'PRJ-1', 'Entity Kind': 'Project', Title: 'Project', Order: 1, Active: true, Revision: 1 });

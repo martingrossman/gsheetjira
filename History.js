@@ -52,5 +52,5 @@ var SheetFlowHistory = (function () {
 
 function getTaskHistory(entityId, limit, offset) {
   if (typeof SheetFlowAuth !== 'undefined') SheetFlowAuth.require('read');
-  return SheetFlowHistory.list(getBook_(), entityId, limit, offset);
+  return browserValue_(SheetFlowHistory.list(getBook_(), entityId, limit, offset));
 }
