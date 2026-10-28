@@ -497,3 +497,32 @@ test('personal legacy batch creation uses the standard writer without mixing cac
   assert.equal(h.tabs['Change History'].rows.length,1);
   assert.equal(h.api.saveIssue({summary:'Editor call without operation ID'}).summary,'Editor call without operation ID');
 });
+
+test('warm personal metadata avoids workbook opening while native edits remain fresh', () => {
+  const h=personalBatchHarness(), entries=new Map();
+  h.api.CacheService={getScriptCache:()=>({get:key=>entries.get(key)||null,put:(key,value,ttl)=>{assert.equal(ttl,30);entries.set(key,value);},remove:key=>entries.delete(key)})};
+  const saved=h.api.saveIssue({summary:'Cached metadata only',operationId:'cache-first'});
+  assert.equal(entries.size,1);
+  const open=h.api.SpreadsheetApp.openById;
+  h.api.SpreadsheetApp.openById=()=>{throw new Error('Warm metadata must not reopen the workbook');};
+  h.tabs.Issues.rows[1][3]='Native edit while metadata is warm';
+  assert.throws(()=>h.api.saveIssue({id:saved.id,summary:'Stale',operationId:'cache-stale'},saved.version),/changed elsewhere/);
+  const second=h.api.saveIssue({summary:'A new task sees fresh rows',operationId:'cache-second'});
+  assert.notEqual(second.id,saved.id);assert.equal(h.tabs.Issues.rows.length,3);
+  h.api.SpreadsheetApp.openById=open;
+  assert.equal(h.api.getProject().issues[0].summary,'Native edit while metadata is warm');
+});
+
+test('personal metadata refresh follows geometry changes and write failures invalidate cached references', () => {
+  const h=personalBatchHarness(),entries=new Map();
+  h.api.CacheService={getScriptCache:()=>({get:key=>entries.get(key)||null,put:(key,value)=>entries.set(key,value),remove:key=>entries.delete(key)})};
+  h.api.saveIssue({summary:'Prime metadata',operationId:'meta-prime'});
+  h.tabs.Issues.getMaxRows=()=>1500;
+  h.api.getProject();
+  assert.equal(JSON.parse(entries.values().next().value).sheets.Issues.rowCount,1500);
+  h.fail();
+  assert.throws(()=>h.api.saveIssue({summary:'Rejected write',operationId:'meta-failed'}),/Batch rejected/);
+  assert.equal(entries.size,0);
+  const saved=h.api.saveIssue({summary:'Retry after invalidation',operationId:'meta-failed'});
+  assert.ok(saved.id);assert.equal(entries.size,1);
+});

@@ -69,6 +69,7 @@ function getProject() {
   return withLock_(function () {
     authorizationService_().require('read');
     var book = getBook_();
+    if (typeof trackerMode_ === 'function' && trackerMode_() === 'personal') personalSaveMetadata_(book.getId(), book, true);
     var issues = readIssues_(book);
     return browserValue_({ issues: issues.map(clientIssue_), comments: {}, commentsLazy: true, mode: typeof trackerMode_ === 'function' ? trackerMode_() : 'team', settings: typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [], spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() });
   });
@@ -352,14 +353,8 @@ function saveIssueLocked_(book, input, expectedVersion, timing) {
 function readPersonalSaveBook_() {
   var id = environmentSpreadsheetId_();
   if (!id) throw new Error('Run setupTracker in the Apps Script editor first.');
-  var source = SpreadsheetApp.openById(id), names = ['Issues', '_System'], metadata = {};
-  var ranges = names.map(function (name) {
-    var sheet = source.getSheetByName(name);
-    if (!sheet) throw new Error('Personal mode requires Issues and _System. Run setupTracker.');
-    metadata[name] = { sheetId: sheet.getSheetId(), rowCount: sheet.getMaxRows(), lastRow: Math.max(1, sheet.getLastRow()) };
-    return "'" + name + "'!A1:" + (name === 'Issues' ? 'U' : 'B') + metadata[name].lastRow;
-  });
-  var zone = source.getSpreadsheetTimeZone();
+  var reference = personalSaveMetadata_(id), names = ['Issues', '_System'], metadata = reference.sheets;
+  var ranges = ["'Issues'!A:U", "'_System'!A:B"], zone = reference.zone;
   var result = Sheets.Spreadsheets.Values.batchGet(id, { ranges: ranges, valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'SERIAL_NUMBER' }), sheets = {};
   names.forEach(function (name, index) {
     var meta = metadata[name], rows = (result.valueRanges[index] || {}).values || [];
@@ -373,7 +368,7 @@ function readPersonalSaveBook_() {
     }); });
     sheets[name] = {
       getName: function () { return name; }, getSheetId: function () { return meta.sheetId; },
-      getMaxRows: function () { return meta.rowCount; }, getLastRow: function () { return meta.lastRow; },
+      getMaxRows: function () { return meta.rowCount; }, getLastRow: function () { return Math.max(1, rows.length); },
       getRange: function (row, column, height, width) { return { getValues: function () {
         return Array.from({ length: height || 1 }, function (_, r) { return Array.from({ length: width || 1 }, function (_, c) { return rows[row - 1 + r] && rows[row - 1 + r][column - 1 + c] != null ? rows[row - 1 + r][column - 1 + c] : ''; }); });
       } }; }
@@ -381,6 +376,28 @@ function readPersonalSaveBook_() {
   });
   assertHeaders_(sheets.Issues);
   return { _personalSave: true, getId: function () { return id; }, getSheetByName: function (name) { return sheets[name] || null; }, getSpreadsheetTimeZone: function () { return zone; } };
+}
+/** Cache only sheet identities/geometry/time zone, never tasks, receipts or permissions. */
+function personalSaveMetadata_(id, source, refresh) {
+  var cache = typeof CacheService !== 'undefined' ? CacheService.getScriptCache() : null;
+  var key = 'PERSONAL_SAVE_META_V1:' + id, cached;
+  if (cache && !refresh) {
+    try { cached = JSON.parse(cache.get(key) || 'null'); } catch (ignore) {}
+    if (cached && cached.zone && cached.sheets && ['Issues', '_System'].every(function (name) { return cached.sheets[name] && Number.isInteger(cached.sheets[name].sheetId) && cached.sheets[name].rowCount > 0; })) return cached;
+  }
+  source = source || SpreadsheetApp.openById(id);
+  var result = { zone: source.getSpreadsheetTimeZone(), sheets: {} };
+  ['Issues', '_System'].forEach(function (name) {
+    var sheet = source.getSheetByName(name);
+    if (!sheet) throw new Error('Personal mode requires Issues and _System. Run setupTracker.');
+    if (typeof sheet.getSheetId !== 'function') return;
+    result.sheets[name] = { sheetId: sheet.getSheetId(), rowCount: sheet.getMaxRows() };
+  });
+  if (cache && result.sheets.Issues && result.sheets._System) { try { cache.put(key, JSON.stringify(result), 30); } catch (ignore) {} }
+  return result;
+}
+function invalidatePersonalSaveMetadata_(id) {
+  if (typeof CacheService !== 'undefined') { try { CacheService.getScriptCache().remove('PERSONAL_SAVE_META_V1:' + id); } catch (ignore) {} }
 }
 /** Personal legacy save: task, category and retry receipt commit in one Sheets API batch. */
 function savePersonalIssueBatch_(book, issue, current, snapshot, operationId, timing) {
@@ -413,7 +430,9 @@ function savePersonalIssueBatch_(book, issue, current, snapshot, operationId, ti
   var receiptKey = 'IDEMPOTENCY:' + operationId;
   write(system, nextSystemRow, [cell(receiptKey), cell(JSON.stringify({ savedAt: new Date().toISOString(), result: saved })), cell(new Date().toISOString(), 'timestamp')]);
   // A request failure is never retried here: the browser retries the same operation ID.
-  var response = Sheets.Spreadsheets.batchUpdate({ requests: requests, includeSpreadsheetInResponse: true, responseRanges: ["'Issues'!A" + row + ':U' + row], responseIncludeGridData: true }, book.getId());
+  var response;
+  try { response = Sheets.Spreadsheets.batchUpdate({ requests: requests, includeSpreadsheetInResponse: true, responseRanges: ["'Issues'!A" + row + ':U' + row], responseIncludeGridData: true }, book.getId()); }
+  catch (error) { invalidatePersonalSaveMetadata_(book.getId()); throw error; }
   timing.writeMs = Date.now() - mark; mark = Date.now();
   var returnedSheet = response.updatedSpreadsheet && response.updatedSpreadsheet.sheets && response.updatedSpreadsheet.sheets.find(function (entry) { return entry.properties.sheetId === sheet.getSheetId(); });
   var data = returnedSheet && returnedSheet.data && returnedSheet.data[0];
