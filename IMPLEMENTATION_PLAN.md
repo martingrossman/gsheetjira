@@ -1,66 +1,67 @@
 # Implementation review and completion plan
 
-Reviewed: 2026-10-27. Baseline: commit `420b8e5`, against [ProductRequiremtns.md](ProductRequiremtns.md), including section 4.1 on vertical reordering.
+Reviewed: 2026-10-28. Source baseline: commit `296162d` on `implement_plan` (synced with `origin/implement_plan` before this plan update). Compared with [ProductRequiremtns.md](ProductRequiremtns.md), including section 4.1 on vertical reordering. The previous review was based on `420b8e5`; its coverage table and findings below have been reconciled with the current source.
 
 ## 1. Review outcome
 
-The current application provides a working foundation for a personal tracker: a Google Sheets issue register, editable HTML table, Kanban columns, Gantt scheduling, issue details, basic filters, CSV export, and conflict detection for app writes. It does not yet implement the full team and agent task manager described in the requirements.
+The current application is a useful personal tracker with a Google Sheets issue register, editable table, Kanban, Gantt, issue details, basic filters, CSV export, and version checks for app writes. It also has schema-v2 migration, environment, authorization, history, and ordering foundations. It does not yet implement the full team and agent task manager described in the requirements.
 
-The largest changes are a migration from the single `Issues` table to the required data model, a common mutation and permissions layer, consistent ordering across views, faster editing, and the missing team, calendar, settings, dashboard, and agent workflows. Build these in that order so later features share the same rules and persistence.
+Since the previous review, the branch completed substantial Gantt and swimlane work: Epic durations derive from child schedules; Epic lanes collapse across views; Gantt rows show the parent hierarchy, support Story-child collapse, quick-add, comments, type badges, label resizing, and vertical reorder/reparent/unparent interactions. The neutral/cobalt palette is also present. These features are reflected in the current requirements, but the implementation-package checklists had not been updated.
 
-**Verification performed for this review:** inspected the source, build/deployment configuration, README, and test files; ran `npm.cmd test`: **28 tests passed**. These are model and mocked Apps Script tests. No live spreadsheet operations, fresh browser interaction tests, concurrency load tests, or 2,000-task benchmarks were run for this review. Previous manual browser testing is documented in the README, but there is no committed automated browser suite.
+**Current branch verification:** `npm run build` succeeds and `npm test` passes **35 tests**. The suite covers the shared model and mocked Apps Script paths; Gantt interactions have also been checked manually in the local browser demo. There is no committed automated browser suite. No live Apps Script migration/role acceptance, concurrency load test, or 2,000-task benchmark has been recorded. `clasp push` uploads source, but a new versioned web-app deployment has not been verified as part of this review.
 
-This document is a plan. The proposed features, schemas, modules, and acceptance checks below are not implemented by adding this file.
+The plan is still broader than the current product. A partial foundation does not count as a completed package: `[x]` means the whole listed item is implemented and checked; `[~]` means some of it exists but its stated scope or evidence is incomplete; `[ ]` means it remains open. The acceptance criteria for a package remain open until their end-to-end conditions are met.
 
 ### Status definitions
 
 - **Implemented:** the named capability exists in the inspected code; this does not imply every requirement in its section is complete.
 - **Partial:** a useful subset exists, but behavior, coverage, or verification is missing.
 - **Missing:** no implementation was found in the current source.
+- In work-package lists, `[x]` means complete, `[~]` means partial, and `[ ]` means open. Parenthetical notes name what remains.
+- The WP-00–WP-14 task lists currently contain **10 complete, 45 partial, and 38 open items**. All final release-gate checks in section 8 remain open.
 
 ## 2. Findings to address first
 
-| Priority | Finding and evidence | Consequence | Planned resolution |
+| Priority | Current finding and evidence | Consequence | Planned resolution |
 |---|---|---|---|
-| P0 | Failed inline saves call `render()` using the old issue state in [Client.html](Client.html), change handler near line 328. The detail form preserves its text, but table cells do not. | A network error or conflict can discard the value the user just typed. | WP-03: preserve drafts per issue/field, provide Retry and conflict resolution, and test failure after typing. |
-| P0 | `handleSheetEdit()` in [Code.js](Code.js), line 99, fills IDs/defaults/timestamps without calling the domain validator. `readIssues_()` checks only some invalid data and throws for the entire load. | Direct edits can introduce invalid relationships, date ranges, and dependencies; a malformed row can block the application. | WP-02: validate and reconcile native edits, protect controlled fields, retain invalid input with diagnostics, and keep unaffected records usable. |
-| P0 | `type` is hardcoded to Epic/Story/Task/Bug and `parentId` overloads hierarchy in [Core.js](Core.js), lines 4–15 and `validate()`. | The required configurable task categories, project/epic links, and task-under-task subtasks cannot be represented correctly. | WP-01/WP-04: distinguish hierarchy kind from configurable task type and migrate links without changing existing IDs. |
-| P0 before team/agent release | [appsscript.json](appsscript.json) is owner-only; server entry points have no application roles or actor checks. | The current personal deployment is not a team or agent authorization system. Broadening access alone would not satisfy the requirements. | WP-00/WP-02/WP-10: verify identity, enforce server permissions, and prove the authenticated agent transport before enabling shared access. |
-| P1 | `persist()` waits for the server before updating state, and `setBusy()` blocks editing globally in [Client.html](Client.html), lines 88–123. | Routine edits are tied to network latency; the required immediate feedback and background saving are absent. | WP-03: optimistic state, a per-record mutation queue, debounce, explicit pending/failure states, and targeted rendering. |
-| P1 | Kanban computes midpoint ranks in the browser and saves only the moved record; there is no group revision or rank rebalance. See [Client.html](Client.html), drop handler near line 346. | Concurrent moves can choose the same rank; repeated insertions can exhaust numeric gaps. Sheet/Gantt rows and epic groups cannot be dragged vertically. | WP-05: one server ordering operation, ordering-scope revisions, safe rebalance, and shared drag/keyboard controls. |
-| P1 | App create calls have no idempotency key; history and undo are absent. [Code.js](Code.js), `saveIssue()` and `deleteIssue()`. | Retrying a create after a lost response can duplicate work, and edits/deletions have no durable recovery trail. | WP-02/WP-03: operation IDs, history, archive/restore, and revision-checked inverse operations. |
-| P1 | Every save reads the whole register, writes a full row, then reads the whole register again. Reads also acquire the script lock. Rendering rebuilds all visible content. | The stated 2,000-task performance targets have not been demonstrated and these paths will need measurement and optimization. | WP-02/WP-14: batched reads/writes, changed-field updates, summary/detail loading, bounded critical sections, and rendering virtualization. |
+| P0 | The v2 tabs and migration tools exist, but app CRUD still reads and writes the legacy `Issues` tab through `getBook_()` and `readIssues_()` in [Code.js](Code.js). Migration copies data to `Tasks` and `Projects and Epics`; it does not switch runtime storage. | The new task/project model is not yet the active source of truth, so v2-only fields and lifecycle rules are not available through normal app edits. | WP-01: finish a test-workbook migration, route CRUD through the schema/repository, and keep a tested rollback path. |
+| P0 | [Authorization.js](Authorization.js) defines roles and capabilities, but enforcement is disabled by default; setup/environment configuration and direct Sheet edits are not consistently gated. The active-user email may also be unavailable in some deployments. | Role checks are not proof of a team or agent security boundary; direct Sheet access remains a separate path. | WP-00/WP-02/WP-10: verify identity in the intended deployment, cover every entry point, reconcile direct edits, then explicitly test enabled enforcement before sharing. |
+| P0 | `handleSheetEdit()` in [Code.js](Code.js) assigns IDs/defaults/timestamps but does not validate every edited row with `TrackerCore.validate()`. | Direct edits can bypass app parent, date, enum, and dependency checks. | WP-02: validate native edits, preserve invalid input with row diagnostics, and keep valid rows usable. |
+| P1 | A server `reorderIssue()` exists in [Ordering.js](Ordering.js), but the Kanban and Gantt drag handlers still save rank/parent changes through the general issue-save path; Sheet rows have no drag control. | Ordering scopes and revisions are not shared across views; concurrent reorders and filtered/sorted insertion rules are not covered by the service. | WP-05: route all UI moves through one ordering/move command and add Sheet, keyboard, undo, and conflict behavior. |
+| P1 | The client has optimistic updates, local drafts, retry, and a global busy flag in [Client.html](Client.html); detail edits are still explicit-save, and no per-record queue/undo exists. | Some failures can be retried, but edits block globally during saves and the full autosave, conflict-resolution, and undo workflow is absent. | WP-03: keep the existing draft behavior while adding per-record save queues, autosave, robust conflict handling, and revision-safe undo. |
+| P1 | History and idempotency receipt services exist, but the client does not supply operation IDs; history writes are conditional on migrated tabs and deletion is still physical. | Ambiguous create retries can duplicate items, and history/receipt/archive behavior is not a complete recovery trail. | WP-02/WP-03: use client operation IDs, coordinate mutation/history/receipt writes, and implement archive/restore. |
+| P1 | `getProject()` and `saveIssue()` load the issue register, and rendering rebuilds the active view. No 2,000-task benchmark or concurrency load test is recorded. | Performance targets remain unproven and full-register operations may slow as the project grows. | WP-14: measure representative workloads before optimizing paging, changed-field writes, caching, or virtualization. |
 
 ## 3. Requirements coverage
 
 Work-package references point to section 6. Optional features in the requirements remain included in the plan; optional means configurable, not omitted.
 
-| Requirement section | Current coverage | Missing or incomplete behavior | Work packages |
+| Requirement section | Current coverage | Still open | Work packages |
 |---|---|---|---|
-| 1. Purpose | Partial: human tracker with three views over shared data. | Full dashboard and agentic coding workflow; fast-entry performance. | WP-03, WP-09, WP-10, WP-14 |
-| 2. Architecture | Implemented: Apps Script/HTML/Sheets, direct editing, stable IDs, Git. Partial: full-page views. | Sheets quick-entry sidebar; six required tabs; separate development/test spreadsheet and script configuration. `openTracker()` currently opens a small link dialog, not an entry sidebar. | WP-00, WP-01, WP-03 |
-| 3. Task data model | Partial: 21 fixed issue columns, dates, hours, labels, parent links, timestamps, content-hash version, numeric order. | Projects, separate epic/subtask references, configurable task types/defaults, required workflow enums, agent/coding/evidence/actor/claim fields. See field mapping below. | WP-01, WP-02, WP-04, WP-10 |
-| 4. Fast creation/editing | Implemented: title-only creation through a form, table inline edits, detail panel, save indicators, some shortcuts. | Always-visible title + Enter creation; detail autosave; optimistic updates; failed-cell draft retention; multiline app paste; bulk edits; duplication; templates; undo; full keyboard navigation. | WP-03, WP-06, WP-13 |
-| 4.1. Vertical reordering | Partial: flat Kanban cards, including epic cards, can move vertically and persist `rank`. Sheet/Gantt initially consume rank order. | Vertical table/Gantt row moves, epic group moves, scope-aware consistency, keyboard Move up/down, undo, filtered/sorted behavior, concurrent ordering checks. Moving an epic card currently does not move its children as a group; the epic sidebar also ignores rank. | WP-05, WP-07, WP-11 |
-| 5. Task list | Implemented: editable table, search, one-column sorting, detail links. Partial: columns and filters. | Per-column configuration rather than primary/all toggle; grouping; saved views; subtask tree; project/priority/tag/date filters; blocked/overdue/unassigned row highlighting; repository/branch/PR links. | WP-01, WP-06, WP-10 |
-| 6. Kanban | Implemented: status columns, drag moves/reorder, card fields and fixed kind icons. Partial: Add issue opens a form; keyboard opens cards. | Inline column creation; dependency/blocker indicators; configurable WIP limits; keyboard movement and ordering; configurable badges and new statuses. | WP-03, WP-04, WP-05, WP-07 |
-| 6.1. Epic swimlanes | Partial: Kanban now renders aligned status columns inside one lane per epic, includes a `No epic` lane, shows per-lane item counts/completion, remembers collapsed lanes, and reparents cards when dropped into another epic lane. | Epic/assignee/project grouping; atomic server-side cross-column/cross-epic moves; vertical lane order; keyboard lane movement; dependency/blocker indicators and WIP limits. | WP-05, WP-07 |
-| 6.2. Filters | Partial: one type, status, assignee, sprint and one epic; reset; combined search; state survives view switches in the same session. | Multi-type selection; saved filters/grouping; persisted views; stronger active-filter display. | WP-04, WP-06 |
-| 7. Gantt | Implemented: day/week scales, horizontal move, right-edge resize, calendar-day duration preservation, progress, dependency lines, today and weekend markers. | Month zoom, milestones, holiday/leave/overdue overlays, separate unscheduled tray and drop-to-schedule, grouping, vertical order, conflict warnings, optional propagation, scheduling undo, working-day mode and explicit overrides. | WP-05, WP-08, WP-11, WP-12 |
-| 8. Team/capacity | Missing: assignees are unvalidated text names. | Team tab; stable people/agent identities; roles, active status, workweek, hours/day, default assignees; history-preserving deactivation; workload and overload; availability; agent concurrency limits. | WP-01, WP-02, WP-08, WP-10, WP-12 |
-| 9. Holidays/availability | Missing: only fixed Saturday/Sunday styling exists. | Manual holidays and leave; single/range/partial days; team/individual scope; configurable workweeks; scheduling and workload integration; preserved overrides. | WP-08, WP-11, WP-12 |
-| 10. Types/settings | Missing as configuration: enums, colors and defaults are hardcoded. | Settings UI/tab; stable type IDs; Algo/Data/Requirements/Bug defaults; name/color/badge/order/active/default configuration; safe rename, deactivate, and delete-with-reassignment. | WP-04 |
-| 11. Attributes/badges | Partial: fixed kind icons, colors and type tooltip; symbols supplement color. | Typed custom attributes; selectable value styling; configured primary badge source; initials/custom abbreviation/icon; focus-accessible full label; shared renderer including dashboard; measured contrast. | WP-04, WP-13 |
-| 12. Dashboard | Partial: four non-clickable counters for total/in-progress/completed/overdue. | Dedicated dashboard route; breakdowns by status/epic/type/assignee; blocked/due-soon/review/stale-claim lists; epic progress; workload warnings; task badges; filter-preserving drill-down and project filtering. | WP-09, WP-10, WP-12 |
-| 13. Agent workflow | Missing. | Structured context; ready-task listing; claim/progress/block/release/reassign/subtask/result operations; stale claims; dependency start guard; evidence validation; separate completion and acceptance; permission boundary for task content. | WP-01, WP-02, WP-10 |
-| 13.1. Status flow | Partial: Backlog → To Do → In Progress → Review → Done labels exist without transition policy. | Ready migration, Blocked/reason/explicit return status, reviewer-controlled acceptance, evidence requirements, and agent start rules. | WP-01, WP-02, WP-10 |
-| 14. Agent interface | Missing: browser `google.script.run` CRUD is not a documented authenticated agent API. | All nine named operations, JSON contract, pagination/filtering/batches, verified actor identity, revisions, idempotency, structured errors, credential lifecycle. | WP-00, WP-02, WP-10 |
-| 15. Integrity/concurrency | Implemented for app CRUD: script lock, content versions, stable links, dependency-cycle checks, linked-delete guard. Partial overall. | Task-parent cycles once subtasks exist; claim/bulk/multi-entity atomicity; consistent direct-sheet validation; reconciliation; archival; order-group conflicts; same-row manual edit race handling. | WP-01, WP-02, WP-05, WP-10 |
-| 16. Performance | Partial: client reuses loaded data, bulk reads, no full browser reload, loading states; text cells save on change rather than each keystroke. | Changed-field writes; batched trigger writes; reference caching; debounced autosave; incremental/virtual rendering; measured 100 ms / 3 s / 2 s targets at 2,000 tasks. | WP-02, WP-03, WP-14 |
-| 17. Reliability/history | Partial: errors and conflict detection; editor drafts survive failure; load retry; CSV export. | Durable actor/field history, claims/review events, history panel, failed-save retry, duplicate-safe operations, backups/restoration, archive, documented undo scope. CSV alone is not a project backup. | WP-02, WP-03, WP-10, WP-14 |
-| 18. Access control | Partial: personal Google deployment gate; escaped HTML and formula-like text handling. | Admin/editor/viewer/agent roles; reviewer capability; Settings permissions; server checks on every operation; sheet protections and direct-access policy; per-actor audit; authenticated agent secrets. | WP-00, WP-02, WP-10 |
-| 19. Development/verification | Implemented: separate core/server/client files, generated browser core, build script, setup docs, 28 tests. | Environment separation; committed browser tests; live Apps Script acceptance; migration, role, bulk, order, calendar, claim, API, retry and load coverage; deployment manifest/allowlist updates for new modules. | WP-00 and verification in every package; WP-14 |
-| 20. Delivery priorities | Partial personal tracker foundation. | Complete Phase 1 human + agent MVP, then scheduling/capacity, then extended customization/reporting. Earlier Gantt work is reusable but does not make Phase 2 complete. | Release sequence in section 7 |
+| 1. Purpose | Partial: usable human tracker with Sheet, Kanban, and Gantt views. | Agentic workflow, full dashboard, team capacity, and measured fast-entry performance. | WP-03, WP-08–WP-10, WP-12, WP-14 |
+| 2. Architecture | Partial: Apps Script/HTML/Sheets, direct Sheet editing, stable IDs, environment configuration, health checks, schema migration. App CRUD still uses legacy `Issues`; no quick-entry sidebar or proven isolated script deployments. | Complete v2 storage cutover; sidebar; verify separate development/test/production script and workbook targets. | WP-00, WP-01, WP-03 |
+| 3. Task data model | Partial: legacy issue fields and a v2 schema/migration mapping for projects, tasks, team, availability, settings, history, and system records. | Make v2 the active repository; complete independent kind/type and project/epic/subtask behavior; validate all fields and lifecycle rules. | WP-01, WP-02, WP-04, WP-10 |
+| 4. Fast creation/editing | Partial: quick-add, title-only issue creation, table inline edits, detail editor, optimistic app saves, local drafts, retry, and basic keyboard shortcuts. | Sidebar, multiline paste, per-record save queues, detail autosave, conflict compare/discard, bulk edits, duplication, undo, full keyboard/focus support. | WP-03, WP-06, WP-13 |
+| 4.1. Vertical reordering | Partial: Kanban card moves and Gantt row reorder/reparent/unparent exist; Gantt Epic headers can reorder, and issue ranks persist. | Sheet row moves, shared server-side move/order contract, keyboard moves, undo, sorted/filtered neighbor rules, group moves with children, and concurrent order-scope checks. | WP-05, WP-07, WP-11 |
+| 5. Task list | Partial: editable issue table, search, one-column sort, primary/all-columns toggle, Epic sections, and inline details. | Configurable per-user columns, hierarchical task tree, broader filters/grouping, saved views, bulk actions, and blocked/overdue/unassigned styling. | WP-01, WP-06, WP-10 |
+| 6. Kanban | Partial: status columns, drag status/reorder, quick-add, Epic swimlanes, and configured task-type badges. | WIP limits, dependency/blocker indicators, keyboard moves, richer quick-create defaults, and shared audited ordering/move behavior. | WP-03–WP-05, WP-07 |
+| 6.1. Epic swimlanes | Mostly implemented: Sheet/Kanban/Gantt share the swimlane toggle and Epic/no-Epic grouping; lanes collapse, counts/progress show, and grouped views avoid duplicate Epic rows. Kanban reparents on cross-lane drops; Gantt has derived Epic bars and its own row hierarchy/collapse. | Epic/assignee/project grouping selectors, keyboard lane moves, and shared server-side ordering/moves with audit/undo. | WP-05, WP-07, WP-11 |
+| 6.2. Filters | Partial: search plus one type, status, assignee, sprint, and Epic filter with reset. | Multi-type, project/priority/tag/date filters, removable active chips, and persisted named filters/views. | WP-04, WP-06 |
+| 7. Gantt | Partial but substantially improved: day/week zoom, date move/resize, progress, dependencies, today/weekends, derived Epic dates, hierarchical rows, collapsible Epic/Story children, vertical hierarchy moves, double-click editing, quick-add, task-type badges, comment previews, and resizable labels. | Month zoom, milestones, holiday/leave/overdue overlays, unscheduled tray/drop-to-schedule, project/assignee grouping, conflict warnings, working-day scheduling, optional successor rescheduling, and scheduling undo. | WP-05, WP-08, WP-11, WP-12 |
+| 8. Team/capacity | Partial schema only: v2 defines Team fields; assignees in the current app remain text values. | Team UI, verified identities, roles, capacity/workweek, project defaults, active lifecycle, workload and concurrency limits. | WP-01, WP-02, WP-08, WP-10, WP-12 |
+| 9. Holidays/availability | Partial schema only: v2 defines an availability tab; Gantt shades weekends. | Holiday/leave entry, partial-day availability, configurable workweeks, and scheduling/workload integration. | WP-08, WP-11, WP-12 |
+| 10. Types/settings | Partial: seeded type IDs and default settings; Settings `Value` supports legacy names and JSON name/color/badge values; invalid/missing values fall back safely. | Authorized type-management UI and full rename/deactivate/delete/order/default lifecycle. | WP-04 |
+| 11. Attributes/badges | Partial: configured letter/color task-type badges show in Sheet, Kanban, and Gantt. | Custom attributes and colored values, selectable badge source, lifecycle and contrast review, dashboard rendering. | WP-04, WP-13 |
+| 12. Dashboard | Partial: top-level summary counters exist. | Dedicated status/Epic/type/assignee dashboard, actionable lists, workload panels, filters, and drill-down. | WP-09, WP-10, WP-12 |
+| 13. Agent workflow | Missing beyond role/schema fields. | Ready-task listing, atomic claims, progress/block/release/result operations, dependency guards, evidence, stale-claim handling, and review acceptance. | WP-01, WP-02, WP-08, WP-10 |
+| 13.1. Status flow | Partial: current labels include Backlog, To Do, In Progress, Review, Done; v2 maps To Do to Ready. | Blocked status/reason, transition rules, explicit unblock destination, evidence-gated Review, reviewer-controlled acceptance. | WP-01, WP-02, WP-10 |
+| 14. Agent interface | Missing: app CRUD uses `google.script.run`; actor/role and history primitives exist, but there is no authenticated agent contract/transport. | Nine named operations, versioned JSON, pagination/batches, operation IDs from clients, stable errors, credential lifecycle, and identity proof. | WP-00, WP-02, WP-10 |
+| 15. Integrity/concurrency | Partial: app writes use a script lock and content versions; core checks parent types/dependencies and linked deletion; ordering and history foundations exist. | Full v2 relationship/cycle validation, direct-edit validation/reconciliation, atomic multi-record moves, audited archive, and order-scope conflict checks. | WP-01, WP-02, WP-05, WP-10 |
+| 16. Performance | Partial: range reads/writes are batched in places and app views reuse loaded data. | Changed-field writes, per-record autosave, caching/virtualization, and documented 100 ms / 3 s / 2 s measurements on 2,000 issues. | WP-02, WP-03, WP-14 |
+| 17. Reliability/history | Partial: local drafts/retry, conflict checks, CSV, and optional v2 Change History/idempotency services exist. | Client-generated operation IDs, complete mutation history in active storage, detail history, archive/restore, backups, and revision-safe undo. | WP-02, WP-03, WP-10, WP-14 |
+| 18. Access control | Partial: capability roles and actor lookup exist, but enforcement is disabled by default and shared identity/direct-Sheet boundaries are unverified. | Gate every mutation/configuration path, protect direct Sheet access, validate role behavior in the intended deployment, and secure agent credentials. | WP-00, WP-02, WP-10 |
+| 19. Development/verification | Partial: separated core/server/client files, build, GitHub Pages workflow, and 35 model/mocked Apps Script tests. | Automated browser tests, real Apps Script migration/role smoke tests, concurrency/load coverage, and deployment-version evidence. | WP-00, WP-14 |
+| 20. Delivery priorities | Partial: personal tracker foundation and substantial Gantt/Swimlane work; Phase 1 is not complete. | Finish the human workflow, team/calendar, and authenticated agent MVP gates before claiming Phase 1; finish scheduling/capacity for Phase 2. | Release sequence in section 7 |
 
 ## 4. Proposed data model and migration
 
@@ -172,10 +173,10 @@ Each package should be a reviewable change or small series of changes with its o
 
 **Dependencies:** none. **Requirements:** 2, 14, 18, 19.
 
-- [ ] Add explicit development/test/production configuration, using separate Apps Script projects and spreadsheet IDs so development triggers cannot write production data.
-- [ ] Add a startup health check for schema, required tabs, access, and installed triggers; document setup/repair and deployment rollback.
+- [~] Add explicit development/test/production configuration, using separate Apps Script projects and spreadsheet IDs so development triggers cannot write production data. (Environment names and spreadsheet properties exist; distinct projects and isolation proof remain open.)
+- [~] Add a startup health check for schema, required tabs, access, and installed triggers; document setup/repair and deployment rollback. (Schema/trigger checks and setup docs exist; access checks and rollback proof remain open.)
 - [ ] Commit repeatable browser test infrastructure and fixtures without depending on production data or credentials.
-- [ ] Prove actor identity and the proposed authenticated agent transport using the actual account/deployment model in section 5D. Document role versus direct-Sheet access boundaries.
+- [~] Prove actor identity and the proposed authenticated agent transport using the actual account/deployment model in section 5D. Document role versus direct-Sheet access boundaries. (Actor/role scaffolding exists; identity and agent transport are not verified.)
 - [ ] Add deployment commands that report the target script, spreadsheet environment, source commit and release version; keep owner-only access until a shared-access design is verified.
 
 **Acceptance:** a test edit and trigger execution touch only the test workbook; an unauthorized API call is rejected; the chosen identity strategy demonstrably distinguishes required actors; setup and rollback runbooks name exact targets.
@@ -184,10 +185,10 @@ Each package should be a reviewable change or small series of changes with its o
 
 **Dependencies:** WP-00. **Requirements:** 2, 3, 13.1, 15.
 
-- [ ] Introduce a schema/repository layer (`Schema.js`, `Repository.js`, `Migrations.js`) and the tables/fields in section 4.
-- [ ] Use header-to-field mappings, stable IDs and explicit schema versions rather than hardcoded positional assumptions scattered through the server.
-- [ ] Add project/epic/task membership rules, arbitrary task-subtask links with cycle prevention, and enum mappings.
-- [ ] Preserve legacy values and IDs; support a dry run, repeatable migration, validation report and data-aware rollback.
+- [~] Introduce a schema/repository layer (`Schema.js`, `Repository.js`, `Migrations.js`) and the tables/fields in section 4. (Schema, repository, migration tools, and v2 tabs exist; app CRUD still uses `Issues`.)
+- [~] Use header-to-field mappings, stable IDs and explicit schema versions rather than hardcoded positional assumptions scattered through the server. (Stable IDs and schema versions exist; legacy CRUD still uses fixed columns.)
+- [~] Add project/epic/task membership rules, arbitrary task-subtask links with cycle prevention, and enum mappings. (V2 columns and basic parent-type checks exist; arbitrary nested tasks/cycle prevention are not complete.)
+- [~] Preserve legacy values and IDs; support a dry run, repeatable migration, validation report and data-aware rollback. (Dry-run and non-destructive copy exist; rollback, repeat-run behavior after cutover, and live migration proof remain open.)
 - [ ] Separate active versus archived records without breaking history or references.
 
 **Acceptance:** migrate a realistic copy with nested stories, dependencies, unscheduled issues and legacy fields; every source ID/value has a documented destination; a second migration adds no duplicates; invalid mappings stop cutover; existing CRUD works through the new repository.
@@ -196,11 +197,11 @@ Each package should be a reviewable change or small series of changes with its o
 
 **Dependencies:** WP-00, WP-01. **Requirements:** 13.1, 15, 17, 18; foundations for 4 and 14.
 
-- [ ] Add `Authorization.js`, `TaskService.js`, `History.js`, and `SheetEdits.js` responsibilities. Resolve actor identity server-side and apply project/role/capability checks to every public entry point, including setup/configuration/sample-data operations.
-- [ ] Define administrator, editor, viewer and agent permissions plus a reviewer/accept capability. Enforce allowed status transitions, required blocker reasons and explicit unblock destinations.
-- [ ] Add operation IDs, persistent idempotency receipts, row/scope revisions, content fingerprints and structured errors. Bound payload/batch sizes and idempotency retention.
+- [~] Add `Authorization.js`, `TaskService.js`, `History.js`, and `SheetEdits.js` responsibilities. Resolve actor identity server-side and apply project/role/capability checks to every public entry point, including setup/configuration/sample-data operations. (`Authorization.js` and `History.js` exist; identity can be unavailable and enforcement is off by default; not every entry point is gated.)
+- [~] Define administrator, editor, viewer and agent permissions plus a reviewer/accept capability. Enforce allowed status transitions, required blocker reasons and explicit unblock destinations. (Role names/capabilities exist; transition, blocker, and review policies are not enforced.)
+- [~] Add operation IDs, persistent idempotency receipts, row/scope revisions, content fingerprints and structured errors. Bound payload/batch sizes and idempotency retention. (Optional server receipts and content versions exist; clients do not send operation IDs, and scope revisions/retention limits are open.)
 - [ ] Persist related writes, history and receipts together where supported; handle ambiguous timeouts by looking up the operation result before retrying.
-- [ ] Record actors and changed fields for CRUD, moves, claims, releases, review and archive. Provide paginated history retrieval and a detail-panel history view.
+- [~] Record actors and changed fields for CRUD, moves, claims, releases, review and archive. Provide paginated history retrieval and a detail-panel history view. (Basic CRUD history and paginated retrieval exist after migration; workflow events and history UI do not.)
 - [ ] Implement the native-edit policy in section 5B, controlled-field protections, row diagnostics, structural-change reconciliation, bulk-paste defaults, and batched trigger writes.
 - [ ] Replace ordinary destructive deletion with archive/restore; restrict permanent deletion and define its history/reference policy.
 
@@ -212,13 +213,14 @@ Inline Kanban quick creation is a required part of this package: each status col
 
 **Dependencies:** WP-01, WP-02. **Requirements:** 2, 4, 16, 17.
 
-- [ ] Add a persistent quick-add title input with Enter submission and configured defaults; reuse it in Kanban columns and a real Sheets sidebar (`QuickAdd.html` and a menu action).
+- [x] Support inline Kanban creation for Task/Story/Epic in the selected column and parent-aware Gantt quick-add under Epics/Stories. Gantt children start in Backlog with the configured default task type.
+- [~] Add a persistent quick-add title input with Enter submission and configured defaults; reuse it in Kanban columns and a real Sheets sidebar (`QuickAdd.html` and a menu action). (App/Kanban/Gantt quick-add exists; sidebar is missing.)
 - [ ] Add multiline paste-to-create with validation preview, batch service calls and idempotency per submitted batch/item.
-- [ ] Replace the global save lock in the client with per-record queues and optimistic draft state. Debounce text, save dates/selects immediately, and merge acknowledged changes without rebuilding the active editor.
-- [ ] Autosave detail edits with clear pending/saved/failed states. Preserve draft text across failures, refreshes and conflicts, and offer Retry / compare with latest / discard intentionally.
+- [~] Replace the global save lock in the client with per-record queues and optimistic draft state. Debounce text, save dates/selects immediately, and merge acknowledged changes without rebuilding the active editor. (Optimistic state/drafts exist; saves still use a global busy lock and full rerender.)
+- [~] Autosave detail edits with clear pending/saved/failed states. Preserve draft text across failures, refreshes and conflicts, and offer Retry / compare with latest / discard intentionally. (Local drafts and Retry exist; detail edits are explicit-save and conflict comparison is missing.)
 - [ ] Add fast duplication, resetting generated IDs, timestamps, claims, completion and result evidence; let the user choose whether to include subtasks.
 - [ ] Implement a command-based undo stack for supported field edits, reorders, status/epic moves, archive/restore and scheduling changes. Undo uses revisions and records a new history event; it never rewrites another user's later changes silently.
-- [ ] Preserve focus and keyboard navigation during saves; use confirmation only when discarding unsaved input or performing irreversible actions.
+- [~] Preserve focus and keyboard navigation during saves; use confirmation only when discarding unsaved input or performing irreversible actions. (Basic shortcuts and Gantt keyboard activation exist; focus-preserving saves and full keyboard workflows do not.)
 
 **Acceptance:** title + Enter creates a task from the app, column or sidebar; the next title can be entered while saving; a forced failed inline/detail save retains the exact input; retry creates no duplicate; undo restores values when revisions match and reports a conflict otherwise.
 
@@ -226,11 +228,12 @@ Inline Kanban quick creation is a required part of this package: each status col
 
 **Dependencies:** WP-01, WP-02. **Requirements:** 3, 10, 11 foundation.
 
-- [ ] Add an authorized Settings view and typed settings repository. Configure defaults, workflow labels/policies, hours units, WIP limits and project defaults.
-- [ ] Seed task categories Algo, Data, Requirements and Bug with stable IDs; preserve legacy/general mappings from migration.
-- [ ] Implement type name, color, badge letter/abbreviation/icon, order, active flag and default selection. Rename without changing references; deactivate without erasing historical labels; require reassignment before deleting a referenced type.
-- [ ] Introduce one shared badge renderer for list, board, Gantt and dashboard. Include meaningful text/icon, accessible full label on hover/focus, and tested color contrast.
-- [ ] Cache reference data with versioned invalidation after configuration changes. Use configured defaults in every task-creation path.
+- [x] Seed Algo, Data, Requirements, and Bug defaults; accept legacy names and JSON name/color/badge values; show compact configured badges consistently in Sheet, Kanban, and Gantt.
+- [~] Add an authorized Settings view and typed settings repository. Configure defaults, workflow labels/policies, hours units, WIP limits and project defaults. (Typed Settings tab/API exist; no Settings view and most policy settings are not implemented.)
+- [~] Seed task categories Algo, Data, Requirements and Bug with stable IDs; preserve legacy/general mappings from migration. (Stable task-type IDs/defaults exist; migration maps legacy issues only partially.)
+- [~] Implement type name, color, badge letter/abbreviation/icon, order, active flag and default selection. Rename without changing references; deactivate without erasing historical labels; require reassignment before deleting a referenced type. (Name/color/letter/default values work through Settings; full lifecycle UI and reassignment are open.)
+- [~] Introduce one shared badge renderer for list, board, Gantt and dashboard. Include meaningful text/icon, accessible full label on hover/focus, and tested color contrast. (Sheet, Kanban, and Gantt use the task-type badge; dashboard and contrast acceptance are open.)
+- [~] Cache reference data with versioned invalidation after configuration changes. Use configured defaults in every task-creation path. (Configured defaults are used by app quick-add; versioned cache invalidation is missing.)
 
 **Acceptance:** renaming/recoloring a type updates every view without changing task associations; inactive types remain readable but unavailable for new assignment; unauthorized Settings changes fail server-side; title-only creation uses the configured default category and assignee.
 
@@ -238,11 +241,12 @@ Inline Kanban quick creation is a required part of this package: each status col
 
 **Dependencies:** WP-01, WP-02; undo uses WP-03. **Requirements:** 4.1, 5, 6.1, 7, 15.
 
-- [ ] Implement and test the ordering contract in section 5C in a reusable `Ordering.js` service plus a client interaction controller.
-- [ ] Add server commands for task reorder, epic/group reorder and explicit cross-group moves. Include scope revisions and normalize ranks safely.
-- [ ] Add drag handles and Move up/down commands to table rows, Kanban cards, epic groups/sidebar and Gantt row labels. Keep Gantt horizontal scheduling and vertical ordering as separate gestures.
-- [ ] Add insertion feedback, keyboard focus restoration, touch support, filtered-list neighbor resolution and an explicit Manual order selector.
-- [ ] Reuse saved orders across views with matching grouping scopes and preserve children when an epic/group moves. Wire ordering undo to the mutation/history service.
+- [x] Add Gantt label/Epic-header drag reordering and valid Epic/Story parent drops, including an explicit target to unparent non-Epics.
+- [~] Implement and test the ordering contract in section 5C in a reusable `Ordering.js` service plus a client interaction controller. (Server rank service and some UI drag paths exist; the shared contract is not wired across views.)
+- [~] Add server commands for task reorder, epic/group reorder and explicit cross-group moves. Include scope revisions and normalize ranks safely. (`reorderIssue()` handles one status scope; cross-group commands and scope revisions are open.)
+- [~] Add drag handles and Move up/down commands to table rows, Kanban cards, epic groups/sidebar and Gantt row labels. Keep Gantt horizontal scheduling and vertical ordering as separate gestures. (Kanban/Gantt drag exists; Sheet and keyboard controls do not.)
+- [~] Add insertion feedback, keyboard focus restoration, touch support, filtered-list neighbor resolution and an explicit Manual order selector. (Gantt/Kanban insertion feedback exists; the other controls/semantics are open.)
+- [~] Reuse saved orders across views with matching grouping scopes and preserve children when an epic/group moves. Wire ordering undo to the mutation/history service. (Rank is reused for basic sorting; consistent scopes, child-group moves, and undo are open.)
 
 **Acceptance:** move a middle item to first/last, reorder an epic with children, and verify persistence after reload in matching table/board/Gantt groupings. Repeat under filters and non-manual sorting. Two concurrent moves produce a valid serial order or a visible conflict. Reordering changes no status, membership or dates. Repeated insertions never create indistinguishable ranks.
 
@@ -250,28 +254,30 @@ Inline Kanban quick creation is a required part of this package: each status col
 
 **Dependencies:** WP-01–WP-05. **Requirements:** 4, 5, 6.2.
 
-- [ ] Add selectable/reorderable visible columns and persist per-user preferences.
-- [ ] Render expandable parent/subtask trees and project/epic/assignee grouping using stable relationships and ordering services.
-- [ ] Add project, priority, tags, date ranges and multi-type filters; keep existing search/status/assignee/epic behavior. Show removable active-filter chips and a complete reset.
+- [~] Add selectable/reorderable visible columns and persist per-user preferences. (The current Sheet has a primary/all-fields toggle only.)
+- [~] Render expandable parent/subtask trees and project/epic/assignee grouping using stable relationships and ordering services. (Epic sections collapse; arbitrary task trees and other groupings are missing.)
+- [~] Add project, priority, tags, date ranges and multi-type filters; keep existing search/status/assignee/epic behavior. Show removable active-filter chips and a complete reset. (Basic single-value filters/search/reset exist.)
 - [ ] Persist named views with filters, grouping, sort, columns and collapse state; define personal/shared ownership and permissions. Preserve applicable state between routes and reloads.
 - [ ] Add row selection and bulk status, assignee, priority, epic, category and date changes. Preview the affected count and define all-or-nothing behavior for each bounded batch.
-- [ ] Highlight blocked, overdue and unassigned tasks; render safe repository/branch/PR links and detail access.
+- [~] Highlight blocked, overdue and unassigned tasks; render safe repository/branch/PR links and detail access. (Some overdue/status cues exist; blocked/unassigned highlighting and implementation links do not.)
 
 **Acceptance:** save/reopen a filtered grouped view; combine multiple categories with date/priority filters; expand subtasks without disturbing order; bulk-edit selected tasks while hidden tasks remain untouched; rejected bulk operations identify failing records and do not leave an undocumented partial state.
 
 ### WP-07 — Complete Kanban and epic swimlanes
 
-The default Kanban presentation is epic swimlanes: lanes run horizontally across the status columns, include all descendants of the epic, and include a final `No epic` lane for standalone work. The same epic grouping semantics must be reusable by Gantt and dashboard views.
+The current Kanban presentation supports Epic swimlanes and a flat-board toggle. Epic swimlane semantics are also used by Sheet and Gantt; dashboard grouping is still open.
 
 The Kanban swimlane presentation is optional: a persisted toolbar toggle can turn swimlanes on or off. When off, the board uses one flat set of status columns while retaining each task's epic relationship so turning swimlanes back on restores the grouping.
 
 **Dependencies:** WP-03–WP-06. **Requirements:** 6, 6.1, 6.2.
 
-- [x] Add a persisted Kanban Swimlanes on/off toggle. Off renders a flat board and preserves task epic relationships; on restores epic grouping and collapsed-lane state.
+- [x] Add a persisted swimlanes on/off toggle shared by Sheet, Kanban, and Gantt. Off renders flat views and preserves task parent relationships; on restores Epic grouping and collapse state.
+- [x] Collapse/expand Epic and No epic lanes across Sheet, Kanban, and Gantt; show lane counts/progress and represent each Epic once in grouped views.
 - [ ] Add No grouping / Epic / Assignee / Project selectors; Epic grouping currently has aligned status columns, collapsible groups and an explicit No epic lane.
-- [ ] Support vertical group order and shared task ordering. Inline quick-add remains available, but lane/column defaults are not yet fully persisted.
-- [ ] Replace the current client-side status/parent/rank save with one server-side move command and validate parent/descendant membership before moving across epics.
-- [x] Show epic item counts and completion; dependency/blocker indicators, configured category/attribute badges, and WIP counts/limits remain outstanding. Define warn-versus-block behavior for each WIP setting.
+- [~] Support vertical group order and shared task ordering. (Gantt Epic headers can reorder and inline quick-add exists; lane order is not consistently draggable/shared.)
+- [~] Replace the current client-side status/parent/rank save with one server-side move command and validate parent/descendant membership before moving across epics. (Basic parent validation and single-row saves exist; a dedicated audited move operation does not.)
+- [x] Show Epic item counts/completion and configured task-type badges in the grouped views.
+- [ ] Add Kanban dependency/blocker indicators and configurable WIP counts/limits; define warn-versus-block behavior for each WIP setting.
 - [ ] Support keyboard status/lane moves and vertical Move up/down with the same server rules as drag-and-drop.
 
 **Acceptance:** a cross-column/cross-epic drag is one audited, undoable operation; an invalid hierarchy move is rejected coherently; collapsed lanes retain state; WIP limits and dependency/blocker indicators reflect current data; the board remains usable without a mouse.
@@ -280,10 +286,10 @@ The Kanban swimlane presentation is optional: a persisted toolbar toggle can tur
 
 **Dependencies:** WP-01, WP-02, WP-04. **Requirements:** 8, 9; Phase 1 foundation for scheduling.
 
-- [ ] Add Team management for human/agent kinds, identities, active status, roles, workweek and daily capacity in hours. Protect role/identity columns and support project default assignees.
-- [ ] Add team holidays, individual leave and availability override entry, supporting dates/ranges and partial-day values. Validate overlap handling using section 5E.
+- [~] Add Team management for human/agent kinds, identities, active status, roles, workweek and daily capacity in hours. Protect role/identity columns and support project default assignees. (V2 Team schema exists; management and enforcement are missing.)
+- [~] Add team holidays, individual leave and availability override entry, supporting dates/ranges and partial-day values. Validate overlap handling using section 5E. (V2 availability schema exists; UI and calendar behavior are missing.)
 - [ ] Add a reusable calendar service that returns daily capacity/working dates for a member/project; configure weekends rather than hardcoding them.
-- [ ] Store agent concurrency limits and stale-claim thresholds for WP-10. Deactivation prevents new assignments/claims while retaining historical identity.
+- [~] Store agent concurrency limits and stale-claim thresholds for WP-10. Deactivation prevents new assignments/claims while retaining historical identity. (V2 fields exist; claim/deactivation behavior is missing.)
 
 **Acceptance:** holidays and personal leave change the correct person's daily capacity; partial-day values and overlapping records have deterministic results; inactive members remain in old history; defaults and units match estimates; role changes require administrator permission.
 
@@ -291,10 +297,10 @@ The Kanban swimlane presentation is optional: a persisted toolbar toggle can tur
 
 **Dependencies:** WP-04, WP-06, WP-08; agent panels need WP-10 and overload panels need WP-12. **Requirements:** 12.
 
-- [ ] Add a dashboard route with summaries by status, epic, category and assignee, plus blocked, overdue, upcoming and review lists.
+- [~] Add a dashboard route with summaries by status, epic, category and assignee, plus blocked, overdue, upcoming and review lists. (The current page has summary counters only.)
 - [ ] Add epic completion, team workload/availability warnings and agent activity/stale claims as their services become available. Keep incomplete panels visibly unavailable until implemented.
 - [ ] Apply project/epic/assignee/category filters and the common badge renderer. Clicking a summary opens the corresponding filtered task view.
-- [ ] Define aggregation semantics: count Tasks separately from epic/project containers; compute epic completion from its task descendants with documented archived-task handling; avoid double-counting parent and child effort in capacity totals.
+- [~] Define aggregation semantics: count Tasks separately from epic/project containers; compute epic completion from its task descendants with documented archived-task handling; avoid double-counting parent and child effort in capacity totals. (Epic progress exists in lane headers; dashboard/capacity semantics remain open.)
 
 **Acceptance:** each summary reconciles with its drill-down, zero/missing values are handled intentionally, shared filters produce consistent totals, and epic/project containers do not inflate task workload.
 
@@ -317,9 +323,13 @@ The Kanban swimlane presentation is optional: a persisted toolbar toggle can tur
 
 **Dependencies:** WP-05, WP-06, WP-08; undo from WP-03. **Requirements:** 7, 4.1.
 
-- [ ] Add month zoom, grouped/collapsible epic/project/assignee rows, vertical row/group ordering, and synchronized filter/manual-order behavior.
-- [ ] Add milestones and a separate unscheduled tray with drag-to-schedule using a documented default duration. Keep precise dates editable and keyboard accessible.
-- [ ] Render configured weekends, holidays, leave, overdue state, today, progress and visible dependencies. Show useful indicators for dependencies outside the current window/filter.
+- [x] Derive each Gantt Epic summary range from scheduled descendants and show its read-only summary bar in the lane header.
+- [x] Render parent-first Story/Task/Bug rows; allow independent Story-child collapse in flat and swimlane modes; retain the state in browser UI settings.
+- [x] Support Gantt double-click editing, resizable label pane, parent-aware quick-add, task-type badges, and comment previews.
+- [x] Drag Gantt labels and Epic headers vertically to reorder or change valid parents, with a separate unparent drop target; keep horizontal schedule dragging separate.
+- [~] Add month zoom, grouped/collapsible epic/project/assignee rows, vertical row/group ordering, and synchronized filter/manual-order behavior. (Epic swimlanes, Story-child collapse, and Gantt vertical moves exist; month/project/assignee grouping and shared order rules do not.)
+- [~] Add milestones and a separate unscheduled tray with drag-to-schedule using a documented default duration. Keep precise dates editable and keyboard accessible. (Unscheduled rows remain visible with a date-entry prompt; milestones/tray/drop-to-schedule are missing.)
+- [~] Render configured weekends, holidays, leave, overdue state, today, progress and visible dependencies. Show useful indicators for dependencies outside the current window/filter. (Weekend, today, progress, and dependency rendering exist; holidays/leave/overdue/out-of-filter indicators do not.)
 - [ ] Add dependency/date/availability warnings and explicit override fields. Calendar-day moves preserve calendar duration; working-day moves use the calendar service and preserve the selected working duration.
 - [ ] Record horizontal moves/resizes as undoable scheduling commands, distinct from vertical order changes.
 
@@ -342,10 +352,10 @@ The Kanban swimlane presentation is optional: a persisted toolbar toggle can tur
 **Dependencies:** WP-02, WP-04, WP-06, WP-09; scheduling metrics use WP-12. **Requirements:** 4, 11, 17, Phase 3 of 20.
 
 - [ ] Add text/number/date/checkbox/single-select custom attribute definitions and stable option IDs, validation, lifecycle rules, and a documented plain-column storage strategy. Preserve historical values during rename/deactivation.
-- [ ] Let Settings choose task type or a custom attribute as the primary badge source; support colored values, initials, abbreviations/icons and accessible labels consistently across every view.
+- [~] Let Settings choose task type or a custom attribute as the primary badge source; support colored values, initials, abbreviations/icons and accessible labels consistently across every view. (Task type is the current badge source; custom attribute selection is missing.)
 - [ ] Add reusable personal/shared task templates, safe duplication options and advanced bulk application. Reset generated workflow metadata on creation; validate template references against active settings.
 - [ ] Extend saved views and dashboard configuration with permissions and stable configuration revisions.
-- [ ] Build initial historical reports from Change History: throughput, lead/cycle time with documented status definitions, blocked duration, agent claim/review activity, and relevant filters/exports. Do not infer historical actors or transitions that were never recorded.
+- [~] Build initial historical reports from Change History: throughput, lead/cycle time with documented status definitions, blocked duration, agent claim/review activity, and relevant filters/exports. Do not infer historical actors or transitions that were never recorded. (A v2 history log/retrieval foundation exists; reports and workflow history do not.)
 
 **Acceptance:** each attribute type round-trips through Sheet/app/API with correct validation; option renames preserve assignment; badge meaning does not depend only on color; templates create valid fresh tasks; reports reconcile to known synthetic history and explicitly exclude unavailable legacy history.
 
@@ -354,27 +364,27 @@ The Kanban swimlane presentation is optional: a persisted toolbar toggle can tur
 **Dependencies:** starts with WP-00 and accompanies every package; final gate after all required packages. **Requirements:** 16, 17, 19.
 
 - [ ] Build a reproducible 2,000-task dataset with projects, epics, subtasks, dependencies, long descriptions, team calendars and history. Separate summary payloads from lazily fetched detail/history; add pagination/delta reconciliation where justified.
-- [ ] Batch reads/writes and update only changed fields. Cache reference data by configuration version. Keep locks short without weakening revision/claim guarantees. Virtualize long tables/boards/Gantt rows and redraw only affected content.
+- [~] Batch reads/writes and update only changed fields. Cache reference data by configuration version. Keep locks short without weakening revision/claim guarantees. Virtualize long tables/boards/Gantt rows and redraw only affected content. (Some range operations are batched; changed-field writes, cache invalidation, and virtualization are open.)
 - [ ] Measure client feedback, initial usable view and server save completion separately under documented browser, network, account, payload and concurrency conditions. Proposed acceptance: feedback ≤100 ms, usable view ≤3 s, ordinary save ≤2 s; report cold/warm distributions and chosen percentile rather than relying on a single best run.
-- [ ] Add automated browser workflows, service integration tests and real Apps Script smoke tests in the test environment. Cover permissions, claims, filtered ordering, history, migration, working calendars, retries, keyboard/touch and server failures.
-- [ ] Add CI for domain/service tests, browser checks, build/template integrity and deployment allowlists. Secrets remain in the approved credential store.
+- [~] Add automated browser workflows, service integration tests and real Apps Script smoke tests in the test environment. Cover permissions, claims, filtered ordering, history, migration, working calendars, retries, keyboard/touch and server failures. (35 Node model/mocked Apps Script tests and a build exist; no committed browser suite or live Apps Script acceptance.)
+- [~] Add CI for domain/service tests, browser checks, build/template integrity and deployment allowlists. Secrets remain in the approved credential store. (GitHub Pages builds the static demo; test/browser/deployment-allowlist CI is missing.)
 - [ ] Implement versioned backups with retention, full-project restore and a periodic restore drill; include settings/history/relationships/operational state, not only current filtered task CSV.
-- [ ] Document supported undo operations and conflict limits, error codes, recovery, native-edit restrictions, API authentication, and release rollback. Record release evidence with source commit, Apps Script version and migration version.
+- [~] Document supported undo operations and conflict limits, error codes, recovery, native-edit restrictions, API authentication, and release rollback. Record release evidence with source commit, Apps Script version and migration version. (Setup, environment, and auth foundations are documented; the full API/recovery/release evidence is not.)
 
 **Acceptance:** all required workflows pass against the release candidate; migration/restore drills preserve IDs and links; performance targets are met under agreed conditions or explicitly renegotiated with measured evidence before claiming completion; the production release uses the tested source/schema and preserves the intended audience.
 
 ## 7. Delivery sequence and release gates
 
-| Stage | Work packages | Gate to proceed |
-|---|---|---|
-| Foundation | WP-00 → WP-01 → WP-02 | Isolated environment; reviewed migration; verified identity/permissions; recoverable writes and direct-edit handling. |
-| Phase 1: human workflows | WP-03 and WP-04 → WP-05 → WP-06 → WP-07; WP-08 after settings | Fast entry/editing, configured types, consistent ordering, filtered hierarchical list, grouped Kanban, team/calendar entry. |
-| Phase 1: agent MVP | WP-10 after identity/service/team foundations; WP-09 dashboard integrates available services | Authenticated agent listing/claims/progress/results, review acceptance, history and dashboard. Phase 1 is not complete without this gate. |
-| Phase 2: scheduling/planning | WP-11 → WP-12; complete dashboard capacity panels | Gantt completeness, working calendars, capacity, dependency warnings and optional rescheduling. |
-| Phase 3: customization/reporting | WP-13 | Attributes, badge selection, advanced templates/views and historical reporting. |
-| Every release / final acceptance | WP-14 throughout | Tests, native-runtime verification, performance evidence, recoverability and traceable deployment. |
+| Stage | Work packages | Current status | Gate still open |
+|---|---|---|---|
+| Foundation | WP-00 → WP-01 → WP-02 | Partial: environment/schema/migration/auth/history components exist. | Prove isolated test/production targets; make v2 the active repository; enforce verified roles; validate direct Sheet edits; complete recoverable writes. |
+| Phase 1: human workflows | WP-03 and WP-04 → WP-05 → WP-06 → WP-07; WP-08 after settings | In progress: quick-add, type badges/settings values, Epic swimlanes, and substantial Gantt interactions exist. | Finish consistent ordering, table hierarchy/saved views, bulk/undo, team/calendar UI and shared move behavior. |
+| Phase 1: agent MVP | WP-10 after identity/service/team foundations; WP-09 dashboard integrates available services | Not started: role and schema foundations only; no agent API or claim workflow. | Authenticated agent listing/claims/progress/results, review acceptance, history and actionable dashboard. Phase 1 is not complete without this gate. |
+| Phase 2: scheduling/planning | WP-11 → WP-12; complete dashboard capacity panels | Partial: day/week scheduling, dependencies, and Gantt hierarchy interactions exist. | Gantt calendar/milestone/conflict/undo work, work calendars, capacity, and optional rescheduling. |
+| Phase 3: customization/reporting | WP-13 | Not started beyond task-type badges and history primitives. | Custom attributes, badge-source selection, templates, saved-view/dashboard configuration, and historical reporting. |
+| Every release / final acceptance | WP-14 throughout | Partial: build and 35 local model/mocked server tests pass. | Browser automation, live Apps Script checks, performance evidence, backup/restore, and traceable versioned deployment. |
 
-The first implementation change should be WP-00 plus the WP-01 migration dry run. The first visible improvement should be WP-03 quick entry and reliable draft saving. Vertical reordering is a Phase 1 deliverable and should follow immediately once the shared schema and mutation service are ready.
+The next work should finish the foundations already started: prove migration and role behavior in an isolated test workbook, switch application CRUD to the versioned repository, and validate direct Sheet edits. Then unify ordering/move operations across views and finish the Phase 1 human workflows. Start the agent MVP only after identity, permissions, and team records are verified. The existing Gantt and palette improvements are completed work and should be preserved while closing these gaps.
 
 ## 8. Final completion checklist
 
