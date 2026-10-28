@@ -538,8 +538,10 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     delete state.drafts[key]; localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
   }
   function withDraft(issue) {
-    const draft = issue && state.drafts[issue.id]; return draft ? { ...issue, ...draft.input } : issue;
+    const draft = issue && state.drafts[issue.id]; return draft ? { ...issue, ...issueValues(draft.input) } : issue;
   }
+  // Operation identity belongs to an immutable submission, never to a displayed issue.
+  function issueValues(input) { const { operationId, _draftKey, ...values } = input; return values; }
   function activityTypes() {
     return C.taskTypeDefinitions(state.settings).map(type => ({ value: type.id, label: type.name }));
   }
@@ -899,7 +901,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       const draft = state.drafts[failedDraftKey] || Object.values(state.drafts)[0]; if (!draft) return;
       const session = formSession;
       try {
-      const saved = await persist(draft.input, draft.version, 'Issue saved');
+      const saved = await persist(draft.input, draft.version, 'Issue saved', 'saveIssue', { retry: true });
         if (saved && dialog.open && formSession === session && (!edited || edited.id === saved.id)) { edited = saved; initialForm = formSnapshot(); setFormSaveStatus('Saved'); }
       } catch (ignore) {}
     });
@@ -950,44 +952,60 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     } finally { setBusy(false); queueMicrotask(drainQuickQueue); }
   }
   function persist(input, version, message = 'Issue saved', mutation = 'saveIssue', options = {}) {
-    const queueKey = draftKey(input), draftKeyNow = input.id || queueKey;
+    const queueKey = saveQueueKeyFor(draftKey(input)), draftKeyNow = input.id || queueKey;
     const savedDraft = state.drafts[draftKeyNow] || state.drafts[queueKey];
-    const operationId = input.operationId || savedDraft?.operationId || newOperationId();
-    const requestInput = { ...input, operationId };
-    const before = input.id ? issueById(input.id) : null, undoBefore = before ? undoSnapshot(before) : null;
     const quickCreate = !input.id && String(input._draftKey || '').startsWith('quick-');
+    const operationId = options.retry || quickCreate
+      ? input.operationId || savedDraft?.operationId || newOperationId()
+      : newOperationId();
+    const requestInput = { ...input, operationId };
+    // Retain the first create payload so a later edit can reconcile an unknown create result.
+    const initialCreate = !input.id && !quickCreate
+      ? savedDraft?.initialCreate || { input: { ...requestInput }, version }
+      : savedDraft?.initialCreate;
+    const before = input.id ? issueById(input.id) : null, undoBefore = before ? undoSnapshot(before) : null;
     if (quickCreate) quickSavesInFlight.add(queueKey);
     saveDraft(requestInput, version, operationId);
+    if (initialCreate) {
+      state.drafts[draftKeyNow].initialCreate = initialCreate;
+      localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
+    }
     if (input.id) {
       const current = issueById(input.id);
-      if (current) { state.issues = state.issues.map(issue => issue.id === input.id ? { ...issue, ...requestInput } : issue); render(); }
+      if (current) { state.issues = state.issues.map(issue => issue.id === input.id ? { ...issue, ...issueValues(requestInput) } : issue); render(); }
     } else if (quickCreate) render();
     const previous = state.saveQueues[queueKey] || Promise.resolve();
-    const job = previous.catch(() => null).then(async () => {
-      const resolvedId = requestInput.id || state.pendingCreateIds[queueKey];
-      const latest = resolvedId ? issueById(resolvedId) : null;
-      const effectiveInput = resolvedId ? { ...requestInput, id: resolvedId } : requestInput;
-      const expectedVersion = latest ? latest.version : version;
-      const effectiveDraftKey = effectiveInput.id || queueKey;
+    const job = previous.catch(() => null).then(async acknowledged => {
+      let resolvedId = requestInput.id || state.pendingCreateIds[queueKey];
+      // Advance only through our own acknowledged queue predecessor, not a remote refresh.
+      let expectedVersion = acknowledged && acknowledged.id === resolvedId ? acknowledged.version : version;
+      const effectiveDraftKey = resolvedId || queueKey;
       state.activeSaves++;
       syncText('Saving…');
       try {
+        if (!resolvedId && initialCreate && initialCreate.input.operationId !== operationId) {
+          const created = await rpc('saveIssue', initialCreate.input, initialCreate.version);
+          resolvedId = created.id; expectedVersion = created.version;
+          state.pendingCreateIds[queueKey] = resolvedId;
+        }
+        const effectiveInput = resolvedId ? { ...requestInput, id: resolvedId } : requestInput;
         const result = mutation === 'moveIssue' && isCloud
           ? await rpc('moveIssue', effectiveInput.id, { status: effectiveInput.status, parentId: effectiveInput.parentId, rank: effectiveInput.rank, operationId }, expectedVersion, operationId)
           : await rpc('saveIssue', effectiveInput, expectedVersion);
         if (!input.id && result.id) state.pendingCreateIds[queueKey] = result.id;
         const newerDraft = state.drafts[effectiveDraftKey] || state.drafts[queueKey];
-        const newerInput = newerDraft && newerDraft.operationId !== operationId ? newerDraft.input : null;
+        const newerInput = newerDraft && newerDraft.operationId !== operationId ? issueValues(newerDraft.input) : null;
         state.issues = state.issues.some(issue => issue.id === result.id)
           ? state.issues.map(issue => issue.id === result.id ? (newerInput ? { ...result, ...newerInput, id: result.id, version: result.version } : result) : issue)
           : [...state.issues, newerInput ? { ...result, ...newerInput, id: result.id, version: result.version } : result];
-        if (newerDraft && result.id && effectiveDraftKey !== queueKey) {
+        if (newerDraft && result.id) {
           const nextDraft = { ...newerDraft, input: { ...newerDraft.input, id: result.id }, version: result.version };
-          state.drafts[result.id] = nextDraft; delete state.drafts[queueKey];
+          state.drafts[result.id] = nextDraft;
+          if (result.id !== queueKey) delete state.drafts[queueKey];
           localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
         }
         const latestDraft = state.drafts[result.id] || state.drafts[queueKey];
-        if (latestDraft?.operationId === operationId) clearDraft(effectiveDraftKey);
+        if (latestDraft?.operationId === operationId) clearDraft(result.id);
         if (options.recordUndo !== false) recordUndo(undoBefore, result, operationId);
         $('#error-banner').hidden = true;
         syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); render(); notify(message);
@@ -1806,7 +1824,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       const session = formSession, key = saveQueueKeyFor(edited?.id), draftKeyValue = draftStorageKeyFor(edited?.id), pending = state.saveQueues[key], draft = state.drafts[draftKeyValue];
       if (!pending && !draft) { dialog.close(); edited = null; formSession++; return; }
       try {
-        const saved = pending ? await pending : await persist(draft.input, draft.version);
+        const saved = pending ? await pending : await persist(draft.input, draft.version, 'Issue saved', 'saveIssue', { retry: true });
         if (saved && dialog.open && formSession === session && formSnapshot() === initialForm) { dialog.close(); edited = null; formSession++; setFormSaveStatus('Saved'); }
       } catch (error) { if (dialog.open && formSession === session) setFormSaveStatus('Save failed · draft kept', true); }
       return;
@@ -1930,7 +1948,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const retryQuick = event.target.closest('[data-retry-quick]');
     if (retryQuick) {
       const draft = state.drafts[retryQuick.dataset.retryQuick];
-      if (draft && !quickSavesInFlight.has(retryQuick.dataset.retryQuick)) persist(draft.input, draft.version, 'Work item saved').catch(() => {});
+      if (draft && !quickSavesInFlight.has(retryQuick.dataset.retryQuick)) persist(draft.input, draft.version, 'Work item saved', 'saveIssue', { retry: true }).catch(() => {});
       return;
     }
     if (state.view === 'sheet' && event.target.closest('.sheet-columns-menu > summary')) { state.sheetColumnsMenuOpen = !state.sheetColumnsMenuOpen; return; }
