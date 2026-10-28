@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const C = require('../Core.js');
 function harness() {
   const rows = [C.fields.map(f => f.label)];
+  const notes = new Map();
   const props = new Map([['SPREADSHEET_ID', 'book-1']]);
   let locks = 0, releases = 0;
   function range(row, column, height = 1, width = 1) {
@@ -14,6 +15,8 @@ function harness() {
       setValues: values => { values.forEach((line, r) => line.forEach((value, c) => { if (!rows[row - 1 + r]) rows[row - 1 + r] = Array(C.fields.length).fill(''); rows[row - 1 + r][column - 1 + c] = typeof value === 'string' && value.startsWith("'") ? value.slice(1) : value; })); },
       setValue: value => range(row, column).setValues([[value]]),
       getRow: () => row, getLastRow: () => row + height - 1, getColumn: () => column, getLastColumn: () => column + width - 1,
+      getNumRows: () => height, getNumColumns: () => width,
+      setNote: value => { notes.set(`${row}:${column}`, value); return range(row, column); }, getNote: () => notes.get(`${row}:${column}`) || '',
       getSheet: () => sheet
     };
   }
@@ -30,7 +33,7 @@ function harness() {
     }
   });
   vm.runInContext(fs.readFileSync(require.resolve('../Code.js'), 'utf8'), context);
-  return { api: context, rows, props, sheet, book, balanced: () => locks === releases };
+  return { api: context, rows, notes, props, sheet, book, balanced: () => locks === releases };
 }
 test('server creates, updates, serializes dates, and deletes issues', () => {
   const h = harness();
@@ -48,6 +51,38 @@ test('stale browser versions cannot overwrite or delete newer changes', () => {
   assert.throws(() => h.api.saveIssue({ id: issue.id, summary: 'Stale' }, issue.version), /changed elsewhere/);
   assert.throws(() => h.api.deleteIssue(issue.id, issue.version), /changed elsewhere/);
   assert.equal(h.api.getProject().issues[0].summary, 'Newer'); assert.ok(h.balanced());
+});
+test('move command validates and applies status, parent, and rank together', () => {
+  const h = harness(), epic = h.api.saveIssue({ summary: 'Epic', type: 'Epic' }), task = h.api.saveIssue({ summary: 'Task' });
+  const moved = h.api.moveIssue(task.id, { status: 'In Progress', parentId: epic.id, rank: 2500, operationId: 'move-1' }, task.version, 'move-1');
+  assert.equal(moved.status, 'In Progress'); assert.equal(moved.parentId, epic.id); assert.equal(moved.rank, 2500);
+  assert.throws(() => h.api.moveIssue(task.id, { parentId: 'MISSING' }, task.version), /changed elsewhere/);
+  assert.throws(() => h.api.moveIssue(task.id, { parentId: task.id }, moved.version), /existing parent/);
+  assert.ok(h.balanced());
+});
+test('Sheets quick add creates parent-aware work using safe defaults', () => {
+  const h = harness(), epic = h.api.saveIssue({ summary: 'Epic', type: 'Epic' });
+  const story = h.api.quickCreateIssue('Quick story', 'Story', epic.id, 'quick-1');
+  assert.equal(story.type, 'Story'); assert.equal(story.parentId, epic.id); assert.equal(story.status, 'Backlog'); assert.equal(story.taskTypeId, 'algo');
+});
+test('batch creation previews per-item failures and retries accepted items without duplicates', () => {
+  const h = harness(), receipts = new Map();
+  h.api.SheetFlowHistory = {
+    findReceipt: (_, operationId) => receipts.has(operationId) ? { result: receipts.get(operationId) } : null,
+    record: () => {}, receipt: (_, operationId, result) => receipts.set(operationId, result)
+  };
+  const items = [
+    { operationId: 'bulk-1', input: { summary: 'First batch task', status: 'Backlog' } },
+    { operationId: 'bulk-2', input: { summary: '', status: 'Backlog' } },
+    { operationId: 'bulk-3', input: { summary: 'Third batch task', status: 'Backlog' } }
+  ];
+  const first = h.api.createIssuesBatch(items);
+  assert.deepEqual(Array.from(first.items, row => row.issue.id), ['PRJ-1', 'PRJ-3']);
+  assert.deepEqual(Array.from(first.errors, row => row.index), [1]);
+  const retry = h.api.createIssuesBatch(items);
+  assert.deepEqual(Array.from(retry.items, row => row.issue.id), ['PRJ-1', 'PRJ-3']);
+  assert.deepEqual(Array.from(retry.errors, row => row.index), [1]);
+  assert.equal(h.rows.length, 3); assert.ok(h.balanced());
 });
 test('content versions detect direct sheet edits even without an edit trigger', () => {
   const h = harness(), issue = h.api.saveIssue({ summary: 'Original' });
@@ -89,6 +124,24 @@ test('direct multiline pastes get unique IDs and preserve input fields', () => {
   assert.equal(h.rows[1][0], 'PRJ-1'); assert.equal(h.rows[2][0], 'PRJ-2');
   assert.equal(h.rows[1][1], 'Task'); assert.equal(h.rows[1][5], 'Backlog'); assert.equal(h.rows[2][14], 100);
   assert.equal(h.rows[1][4], 'Keep this description'); assert.ok(h.rows[2][11] instanceof Date);
+});
+test('direct edits validate rows and leave a correction note without discarding invalid input', () => {
+  const h = harness(); h.rows.push(Array(21).fill(''));
+  h.rows[1][3] = 'Bad dates'; h.rows[1][9] = '2026-11-10'; h.rows[1][10] = '2026-11-09';
+  h.api.handleSheetEdit({ range: h.sheet.getRange(2, 10) });
+  assert.equal(h.rows[1][10], '2026-11-09');
+  assert.match(h.notes.get('2:4'), /Due date cannot be before start date/);
+  h.rows[1][10] = '2026-11-11';
+  h.api.handleSheetEdit({ range: h.sheet.getRange(2, 11) });
+  assert.equal(h.notes.get('2:4'), '');
+  assert.equal(h.rows[1][0], 'PRJ-1');
+});
+test('single-cell edits cannot change generated identity and ordering fields', () => {
+  const h = harness(), issue = h.api.saveIssue({ summary: 'Keep ID' });
+  h.rows[1][0] = 'PRJ-999';
+  h.api.handleSheetEdit({ range: h.sheet.getRange(2, 1), oldValue: issue.id });
+  assert.equal(h.rows[1][0], issue.id);
+  assert.match(h.notes.get('2:1'), /managed by SheetFlow/);
 });
 test('formula-like text is stored as literal text', () => {
   const h = harness(); const issue = C.prepare({ summary: '=IMPORTXML("url", "path")' }, null, '2026-10-27', '2026-10-27T10:00:00Z');

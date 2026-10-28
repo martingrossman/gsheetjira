@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    :root { color-scheme: light; font: 13px Arial, sans-serif; color: #0f172a; background: #f8fafc; }
+    body { margin: 0; padding: 16px; }
+    h1 { margin: 0 0 14px; font-size: 18px; }
+    label { display: block; margin: 12px 0 5px; color: #475569; font-weight: 600; }
+    input, select { box-sizing: border-box; width: 100%; min-height: 36px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; color: #0f172a; background: white; }
+    input:focus, select:focus { outline: 2px solid #93c5fd; border-color: #2563eb; }
+    button { width: 100%; margin-top: 16px; min-height: 38px; border: 0; border-radius: 6px; background: #2563eb; color: white; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #message { min-height: 18px; margin-top: 12px; color: #475569; }
+    #message.error { color: #b91c1c; }
+    .hint { margin: 6px 0 0; color: #64748b; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <h1>Quick add</h1>
+  <form id="quick-form">
+    <label for="title">Title</label>
+    <input id="title" name="title" maxlength="250" autocomplete="off" required>
+    <label for="kind">Work item</label>
+    <select id="kind" name="kind"><option>Task</option><option>Story</option><option>Epic</option></select>
+    <div id="parent-fields">
+      <label for="parent">Parent Epic</label>
+      <select id="parent" name="parent"><option value="">No parent</option></select>
+      <p class="hint">Stories and tasks can be placed directly under an Epic. You can change the parent later in the editor.</p>
+    </div>
+    <button id="add" type="submit">Add item</button>
+  </form>
+  <div id="message" role="status" aria-live="polite">Loading project…</div>
+  <script>
+    const form = document.getElementById('quick-form');
+    const titleInput = document.getElementById('title');
+    const kindInput = document.getElementById('kind');
+    const parentInput = document.getElementById('parent');
+    const parentFields = document.getElementById('parent-fields');
+    const addButton = document.getElementById('add');
+    const message = document.getElementById('message');
+    addButton.disabled = true;
+    function setMessage(text, error) { message.textContent = text || ''; message.classList.toggle('error', Boolean(error)); }
+    function refreshParents(issues) {
+      const selected = parentInput.value;
+      parentInput.replaceChildren(new Option('No parent', ''));
+      issues.filter(issue => issue.type === 'Epic').sort((a, b) => a.rank - b.rank).forEach(issue => parentInput.add(new Option(`${issue.id} · ${issue.summary}`, issue.id)));
+      if (Array.from(parentInput.options).some(option => option.value === selected)) parentInput.value = selected;
+    }
+    function syncKind() { parentFields.hidden = kindInput.value === 'Epic'; if (parentFields.hidden) parentInput.value = ''; }
+    kindInput.addEventListener('change', syncKind);
+    google.script.run.withSuccessHandler(project => { refreshParents(project.issues || []); setMessage('Ready'); addButton.disabled = false; titleInput.focus(); }).withFailureHandler(error => { setMessage(error.message || String(error), true); addButton.disabled = false; }).getProject();
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const title = titleInput.value.trim(); if (!title) { titleInput.focus(); return; }
+      addButton.disabled = true; setMessage('Adding…');
+      const operationId = crypto.randomUUID ? crypto.randomUUID() : `quick-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      google.script.run.withSuccessHandler(issue => {
+        titleInput.value = ''; setMessage(`${issue.id} added`); addButton.disabled = false; titleInput.focus();
+        google.script.run.withSuccessHandler(project => refreshParents(project.issues || [])).getProject();
+      }).withFailureHandler(error => { setMessage(error.message || String(error), true); addButton.disabled = false; titleInput.focus(); }).quickCreateIssue(title, kindInput.value, parentInput.value, operationId);
+    });
+    syncKind();
+  </script>
+</body>
+</html>

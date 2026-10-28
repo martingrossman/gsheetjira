@@ -41,10 +41,12 @@ var SheetFlowEnvironment = (function () {
 })();
 
 function configureTrackerEnvironment(environment, spreadsheetId) {
+  if (typeof SheetFlowAuth !== 'undefined') SheetFlowAuth.require('configure');
   return SheetFlowEnvironment.configure(environment, spreadsheetId);
 }
 
 function startupHealthCheck() {
+  if (typeof SheetFlowAuth !== 'undefined') SheetFlowAuth.require('read');
   var book = getBook_();
   var result = SheetFlowEnvironment.health(book);
   if (!result.ok) throw new Error('SheetFlow startup health check failed: ' + JSON.stringify(result));

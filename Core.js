@@ -69,10 +69,18 @@ var TrackerCore = (function () {
       if (!child.parentId) return;
       var parent = byId.get(child.parentId);
       if (!parent || parent.id === child.id) throw new Error('Select an existing parent other than this issue.');
-      if (child.type === 'Epic' || (child.type === 'Story' && parent.type !== 'Epic') || (['Task', 'Bug'].includes(child.type) && !['Epic', 'Story'].includes(parent.type))) throw new Error('Epics have no parent; stories belong to epics; tasks and bugs belong to epics or stories.');
+      if (child.type === 'Epic' || (child.type === 'Story' && parent.type !== 'Epic') || (['Task', 'Bug'].includes(child.type) && !['Epic', 'Story', 'Task', 'Bug'].includes(parent.type))) throw new Error('Epics have no parent; stories belong to epics; tasks and bugs may belong to epics, stories, or other tasks.');
     }
     checkParent(issue);
     all.filter(function (i) { return i.parentId === issue.id; }).forEach(checkParent);
+    all.forEach(function (item) {
+      var path = new Set(), current = item;
+      while (current) {
+        if (path.has(current.id)) throw new Error('Parent hierarchy cannot form a cycle.');
+        path.add(current.id);
+        current = current.parentId ? byId.get(current.parentId) : null;
+      }
+    });
     split(issue.dependencies).forEach(function (id) { if (id === issue.id || !byId.has(id)) throw new Error('Dependencies must reference other existing issue IDs.'); });
     var visiting = new Set(), visited = new Set();
     function visit(id) {

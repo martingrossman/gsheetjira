@@ -1,7 +1,7 @@
 /** Versioned SheetFlow schema metadata. The legacy Issues tab remains readable during migration. */
 var SheetFlowSchema = (function () {
   'use strict';
-  var version = '2.0';
+  var version = '2.1';
   var tabs = {
     tasks: {
       name: 'Tasks',
@@ -9,7 +9,7 @@ var SheetFlowSchema = (function () {
     },
     projects: {
       name: 'Projects and Epics',
-      headers: ['ID', 'Entity Kind', 'Project ID', 'Title', 'Description', 'Owner ID', 'Start Date', 'Due Date', 'Order', 'Active', 'Archived At', 'Revision']
+      headers: ['ID', 'Entity Kind', 'Project ID', 'Title', 'Description', 'Owner ID', 'Start Date', 'Due Date', 'Order', 'Active', 'Archived At', 'Revision', 'Legacy JSON']
     },
     team: {
       name: 'Team',

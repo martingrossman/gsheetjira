@@ -3,14 +3,18 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('SheetFlow')
     .addItem('Set up / repair tracker', 'setupTracker')
     .addItem('Open tracker', 'openTracker')
+    .addItem('Quick add work item', 'openQuickAdd')
     .addItem('Check schema health', 'schemaHealthCheck')
     .addItem('Run startup health check', 'startupHealthCheck')
     .addItem('Preview v2 migration', 'migrationDryRun')
     .addItem('Migrate legacy Issues to v2 tabs', 'migrateLegacyIssues')
+    .addItem('Activate v2 repository', 'activateVersionedRepository')
+    .addItem('Roll back to Issues repository', 'deactivateVersionedRepository')
     .addItem('Add sample project to empty tracker', 'loadSampleData').addToUi();
 }
 
 function setupTracker() {
+  authorizationService_().require('configure');
   return withLock_(function () {
     var properties = PropertiesService.getScriptProperties();
     var id = environmentSpreadsheetId_();
@@ -23,6 +27,7 @@ function setupTracker() {
     var environment = typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.config().name : 'development';
     properties.setProperty('SHEETFLOW_SPREADSHEET_ID_' + environment.toUpperCase(), book.getId());
     formatSheet_(sheet);
+    if (typeof ensureSchemaTabs_ === 'function') ensureSchemaTabs_(book);
     var hasEditTrigger = ScriptApp.getProjectTriggers().some(function (trigger) {
       return trigger.getHandlerFunction() === 'handleSheetEdit' && trigger.getTriggerSourceId() === book.getId();
     });
@@ -47,6 +52,19 @@ function openTracker() {
   var html = HtmlService.createHtmlOutput('<p><a href="' + url + '" target="_blank" rel="noopener">Open SheetFlow</a></p>');
   SpreadsheetApp.getUi().showModalDialog(html, 'Project tracker');
 }
+function openQuickAdd() {
+  authorizationService_().require('write');
+  SpreadsheetApp.getUi().showSidebar(HtmlService.createHtmlOutputFromFile('QuickAdd').setTitle('Quick add'));
+}
+function quickCreateIssue(title, type, parentId, operationId) {
+  authorizationService_().require('write');
+  title = String(title || '').trim(); type = String(type || 'Task'); parentId = String(parentId || '');
+  if (!title) throw new Error('Enter a title before adding the item.');
+  var book = getBook_(), settings = typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [];
+  var taskType = settings.find(function (setting) { return setting.category === 'workflow' && setting.key === 'defaultTaskType'; });
+  var status = settings.find(function (setting) { return setting.category === 'workflow' && setting.key === 'defaultStatus'; });
+  return saveIssue({ summary: title, type: type, parentId: parentId, taskTypeId: taskType && taskType.value || 'algo', status: status && status.value || 'Backlog', priority: 'Medium', operationId: operationId || '' });
+}
 function getProject() {
   return withLock_(function () {
     authorizationService_().require('read');
@@ -60,26 +78,67 @@ function getProject() {
 function saveIssue(input, expectedVersion) {
   return withLock_(function () {
     authorizationService_().require('write');
-    var book = getBook_();
-    var operationId = input && input.operationId;
-    var history = historyService_();
+    return saveIssueLocked_(getBook_(), input, expectedVersion);
+  });
+}
+function createIssuesBatch(items) {
+  return withLock_(function () {
+    authorizationService_().require('write');
+    if (!Array.isArray(items) || !items.length || items.length > 100) throw new Error('Submit between 1 and 100 issue titles per batch.');
+    var book = getBook_(), results = [], errors = [], operationIds = new Set();
+    items.forEach(function (item, index) {
+      try {
+        if (!item || !item.input || typeof item.input !== 'object') throw new Error('Missing issue fields.');
+        var input = Object.assign({}, item.input), operationId = String(item.operationId || input.operationId || Utilities.getUuid());
+        if (operationIds.has(operationId)) throw new Error('Each batch item needs a unique operation ID.');
+        operationIds.add(operationId); input.operationId = operationId;
+        results.push({ index: index, issue: saveIssueLocked_(book, input, item.expectedVersion) });
+      } catch (error) { errors.push({ index: index, message: error && error.message ? error.message : String(error) }); }
+    });
+    return { items: results, errors: errors };
+  });
+}
+function saveIssueLocked_(book, input, expectedVersion) {
+  var operationId = input && input.operationId, history = historyService_();
+  var previousReceipt = history.findReceipt(book, operationId);
+  if (previousReceipt) return previousReceipt.result;
+  var issues = readIssues_(book);
+  var current = input.id ? issues.find(function (i) { return i.id === input.id; }) : null;
+  if (input.id && !current) throw new Error('This issue no longer exists. Refresh the project.');
+  if (current && current.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh, then apply your changes again.');
+  var issue = TrackerCore.prepare(input, current, today_(book), new Date().toISOString());
+  if (!current) issue.id = nextId_(issues);
+  TrackerCore.validate(issue, issues);
+  writeIssue_(book, issue, current);
+  SpreadsheetApp.flush();
+  var saved = readIssues_(book).find(function (i) { return i.id === issue.id; });
+  if (!versionedRepositoryActive_(book) && typeof SheetFlowSettings !== 'undefined') SheetFlowSettings.setTaskType(book, saved.id, issue.taskTypeId);
+  var changedFields = TrackerCore.fields.filter(function (field) { return !current || current[field.key] !== saved[field.key]; }).map(function (field) { return field.key; });
+  if (!current || current.taskTypeId !== saved.taskTypeId) changedFields.push('taskTypeId');
+  history.record(book, { operationId: operationId, entityId: saved.id, eventKind: current ? 'updated' : 'created', beforeRevision: current && current.version, afterRevision: saved.version, changedFields: changedFields, details: { source: 'app' } });
+  history.receipt(book, operationId, saved);
+  return saved;
+}
+/** Atomic server command for status, parent and rank changes across views. */
+function moveIssue(id, move, expectedVersion, operationId) {
+  return withLock_(function () {
+    authorizationService_().require('write');
+    var book = getBook_(), history = historyService_();
+    operationId = operationId || move && move.operationId || '';
     var previousReceipt = history.findReceipt(book, operationId);
     if (previousReceipt) return previousReceipt.result;
-    var issues = readIssues_(book);
-    var current = input.id ? issues.find(function (i) { return i.id === input.id; }) : null;
-    if (input.id && !current) throw new Error('This issue no longer exists. Refresh the project.');
-    if (current && current.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh, then apply your changes again.');
+    var issues = readIssues_(book), current = issues.find(function (item) { return item.id === id; });
+    if (!current) throw new Error('This issue no longer exists. Refresh the project.');
+    if (current.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh before moving it.');
+    move = move || {};
+    var input = { id: current.id };
+    ['status', 'parentId', 'rank'].forEach(function (key) { if (Object.prototype.hasOwnProperty.call(move, key)) input[key] = move[key]; });
     var issue = TrackerCore.prepare(input, current, today_(book), new Date().toISOString());
-    if (!current) issue.id = nextId_(issues);
     TrackerCore.validate(issue, issues);
-    var sheet = book.getSheetByName('Issues');
-    var row = current ? current._row : Math.max(2, sheet.getLastRow() + 1);
-    ensureRows_(sheet, row);
-    sheet.getRange(row, 1, 1, TrackerCore.fields.length).setValues([toRow_(issue, book)]);
-    SpreadsheetApp.flush();
-    var saved = readIssues_(book).find(function (i) { return i.id === issue.id; });
-    if (typeof SheetFlowSettings !== 'undefined') SheetFlowSettings.setTaskType(book, saved.id, issue.taskTypeId);
-    history.record(book, { operationId: operationId, entityId: saved.id, eventKind: current ? 'updated' : 'created', beforeRevision: current && current.version, afterRevision: saved.version, changedFields: TrackerCore.fields.filter(function (field) { return !current || current[field.key] !== saved[field.key]; }).map(function (field) { return field.key; }), details: { source: 'app' } });
+    writeIssue_(book, issue, current); SpreadsheetApp.flush();
+    var saved = readIssues_(book).find(function (item) { return item.id === id; });
+    var changedFields = ['status', 'parentId', 'rank'].filter(function (key) { return current[key] !== saved[key]; });
+    history.record(book, { operationId: operationId, entityId: id, eventKind: 'moved', beforeRevision: current.version, afterRevision: saved.version, changedFields: changedFields, details: { source: 'app', move: true } });
     history.receipt(book, operationId, saved);
     return saved;
   });
@@ -93,17 +152,89 @@ function deleteIssue(id, expectedVersion) {
     if (!issue) throw new Error('This issue no longer exists. Refresh the project.');
     if (issue.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh before deleting.');
     TrackerCore.canDelete(id, issues);
-    book.getSheetByName('Issues').deleteRow(issue._row);
+    if (versionedRepositoryActive_(book)) archiveVersionedIssue_(book, issue);
+    else book.getSheetByName('Issues').deleteRow(issue._row);
     SpreadsheetApp.flush();
-    var result = { id: id, deleted: true };
-    historyService_().record(book, { entityId: id, eventKind: 'archived', beforeRevision: issue.version, changedFields: [], details: { source: 'app', replacement: 'legacy delete' } });
+    var archived = versionedRepositoryActive_(book), archivedIssue = archived ? readVersionedIssues_(book, true).find(function (item) { return item.id === id; }) : null;
+    var result = { id: id, deleted: true, archived: archived, version: archivedIssue && archivedIssue.version || '' };
+    historyService_().record(book, { entityId: id, eventKind: 'archived', beforeRevision: issue.version, afterRevision: archivedIssue && archivedIssue.version || '', changedFields: [], details: { source: 'app' } });
     return result;
+  });
+}
+function restoreIssue(id, expectedVersion) {
+  return withLock_(function () {
+    authorizationService_().require('write');
+    var book = getBook_();
+    if (!versionedRepositoryActive_(book)) throw new Error('Restore is available after the versioned repository is activated.');
+    var issue = readVersionedIssues_(book, true).find(function (item) { return item.id === id && item._archivedAt; });
+    if (!issue) throw new Error('This archived issue no longer exists.');
+    if (issue.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh before restoring.');
+    restoreVersionedIssue_(book, issue);
+    SpreadsheetApp.flush();
+    var restored = readIssues_(book).find(function (item) { return item.id === id; });
+    historyService_().record(book, { entityId: id, eventKind: 'restored', beforeRevision: issue.version, afterRevision: restored.version, changedFields: [], details: { source: 'app' } });
+    return restored;
+  });
+}
+function activateVersionedRepository() {
+  return withLock_(function () {
+    authorizationService_().require('configure');
+    var book = getBook_();
+    var schema = SheetFlowSchema.report(book);
+    if (!schema.ready) throw new Error('Cannot activate v2 until every schema tab is ready. Run setupTracker, then check schema health.');
+    var system = SheetFlowRepository.records(book, 'system');
+    var migrationComplete = system.some(function (row) { return row.Key === 'MIGRATION_STATUS' && row.Value === 'complete'; });
+    if (!migrationComplete) throw new Error('Run and review the legacy migration before activating the versioned repository.');
+    var oldIssues = readIssues_(book), newIssues = readVersionedIssues_(book, false);
+    var wasCutOver = getRepositoryProperty_('SHEETFLOW_V2_CUTOVER_DONE') === 'true';
+    var rollbackDigest = getRepositoryProperty_('SHEETFLOW_ROLLBACK_DIGEST');
+    if (wasCutOver && rollbackDigest && issueDataDigest_(oldIssues) !== rollbackDigest) throw new Error('V2 activation stopped: Issues changed after rollback. Reconcile those legacy edits before switching repositories.');
+    if (!wasCutOver) {
+      var oldIds = oldIssues.map(function (issue) { return issue.id; }).sort(), newIds = newIssues.map(function (issue) { return issue.id; }).sort();
+      if (oldIds.join('|') !== newIds.join('|')) throw new Error('V2 activation stopped: migrated IDs do not match Issues. Run migrationDryRun and compare the migration targets.');
+    }
+    newIssues.forEach(function (issue) { TrackerCore.validate(issue, newIssues); });
+    setRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA', '2');
+    setRepositoryProperty_('SHEETFLOW_V2_CUTOVER_DONE', 'true');
+    deleteRepositoryProperty_('SHEETFLOW_ROLLBACK_DIGEST');
+    return { activeRepository: 'v2', issueCount: newIssues.length, spreadsheetUrl: book.getUrl() };
+  });
+}
+function deactivateVersionedRepository() {
+  return withLock_(function () {
+    authorizationService_().require('configure');
+    var book = getBook_();
+    if (!versionedRepositoryActive_(book)) return { activeRepository: 'legacy', issueCount: readIssues_(book).length, alreadyActive: true };
+    var issues = readVersionedIssues_(book, false), sheet = book.getSheetByName('Issues');
+    var oldCount = Math.max(0, sheet.getLastRow() - 1);
+    if (oldCount) {
+      var blankRows = Array.from({ length: oldCount }, function () { return Array(TrackerCore.fields.length).fill(''); });
+      sheet.getRange(2, 1, oldCount, TrackerCore.fields.length).setValues(blankRows);
+    }
+    if (issues.length) {
+      ensureRows_(sheet, issues.length + 1);
+      sheet.getRange(2, 1, issues.length, TrackerCore.fields.length).setValues(issues.map(function (issue) { return toRow_(issue, book); }));
+    }
+    SpreadsheetApp.flush();
+    var properties = PropertiesService.getScriptProperties();
+    setRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA', 'legacy');
+    setRepositoryProperty_('SHEETFLOW_ROLLBACK_DIGEST', issueDataDigest_(issues));
+    return { activeRepository: 'legacy', issueCount: issues.length, spreadsheetUrl: book.getUrl(), rollbackCopiedV2Changes: true };
   });
 }
 function loadSampleData() {
   return withLock_(function () {
     authorizationService_().require('configure');
     var book = getBook_();
+    if (versionedRepositoryActive_(book)) {
+      var currentV2 = readVersionedIssues_(book, false);
+      if (currentV2.length) throw new Error('Sample data can only be added to an empty versioned repository.');
+      var sampleIssues = TrackerCore.sample(today_(book));
+      sampleIssues.forEach(function (issue) { writeIssue_(book, issue, null); });
+      PropertiesService.getScriptProperties().setProperty('LAST_ISSUE_NUMBER', String(sampleIssues.length));
+      SpreadsheetApp.flush();
+      return { count: sampleIssues.length, spreadsheetUrl: book.getUrl() };
+    }
     var sheet = book.getSheetByName('Issues');
     if (sheet.getLastRow() > 1) throw new Error('Sample data can only be added to an empty Issues sheet.');
     var issues = TrackerCore.sample(today_(book));
@@ -119,33 +250,226 @@ function onEdit(e) {
   if (PropertiesService.getScriptProperties().getProperty('EDIT_TRIGGER_INSTALLED') !== 'true') handleSheetEdit(e);
 }
 function handleSheetEdit(e) {
-  if (!e || !e.range || e.range.getSheet().getName() !== 'Issues' || e.range.getLastRow() < 2) return;
+  if (!e || !e.range || e.range.getLastRow() < 2) return;
+  var eventSheet = e.range.getSheet(), eventName = eventSheet.getName();
+  if (versionedRepositoryActive_(eventSheet.getParent()) && eventName !== 'Issues') {
+    if (['Tasks', 'Projects and Epics'].indexOf(eventName) >= 0) return withLock_(function () { return handleVersionedSheetEdit_(e); });
+    if (['Settings', 'Team', 'Holidays and Availability'].indexOf(eventName) >= 0) {
+      var configured = false;
+      try { if (typeof SheetFlowAuth !== 'undefined') { var email = e.user && e.user.getEmail ? e.user.getEmail() : ''; SheetFlowAuth.requireForEmail('configure', email); configured = true; } else configured = true; }
+      catch (configurationError) { if (e.range.setNote) e.range.setNote('SheetFlow rejected this configuration edit: ' + configurationError.message); return; }
+      if (configured && e.range.setNote) e.range.setNote('Configuration edits made directly in this tab are not yet validated by SheetFlow. Use the app settings operation and check this value.');
+      return;
+    }
+    return;
+  }
+  if (eventName === 'Issues' && versionedRepositoryActive_(eventSheet.getParent())) {
+    annotateRange_(e.range, 'Issues is the retained migration snapshot. Edit Tasks or Projects and Epics after v2 activation.');
+    return;
+  }
+  if (eventName !== 'Issues') return;
   withLock_(function () {
     var sheet = e.range.getSheet();
     assertHeaders_(sheet);
     var book = sheet.getParent();
-    // New rows may not have IDs yet; scan only IDs when allocating numbers.
-    var issues = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().map(function (r) { return { id: String(r[0]) }; }) : [];
+    if (typeof SheetFlowAuth !== 'undefined' && SheetFlowAuth.enforced()) {
+      var editorEmail = '';
+      try { editorEmail = e.user && e.user.getEmail ? e.user.getEmail() : ''; } catch (ignore) {}
+      try { SheetFlowAuth.requireForEmail('write', editorEmail); }
+      catch (authError) {
+        var firstRow = Math.max(2, e.range.getRow());
+        var lastRow = e.range.getLastRow();
+        for (var deniedRow = firstRow; deniedRow <= lastRow; deniedRow++) {
+          var deniedNote = sheet.getRange(deniedRow, 4);
+          if (deniedNote.setNote) deniedNote.setNote('SheetFlow could not process this edit: ' + authError.message);
+        }
+        return;
+      }
+    }
+    // Google supplies oldValue only for a single-cell edit. Use it to protect
+    // generated identity/timestamp/order fields; bulk pastes are validated below.
+    var editedRange = e.range, singleCell = editedRange.getNumRows && editedRange.getNumColumns && editedRange.getNumRows() === 1 && editedRange.getNumColumns() === 1;
+    var editedColumn = editedRange.getColumn();
+    if (singleCell && e.oldValue !== undefined && [1, 19, 20, 21].indexOf(editedColumn) >= 0) {
+      editedRange.setValue(e.oldValue);
+      if (editedRange.setNote) editedRange.setNote('This field is managed by SheetFlow and was restored.');
+      return;
+    }
+    var existingRows = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, TrackerCore.fields.length).getValues() : [];
+    var taskTypes = typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.taskTypeMap(book) : {};
+    var issues = existingRows.map(function (row, index) { return row.every(function (value) { return value === ''; }) ? null : issueFromRow_(row, index + 2, book, taskTypes); }).filter(Boolean);
     var start = Math.max(2, e.range.getRow());
     var count = e.range.getLastRow() - start + 1;
     var values = sheet.getRange(start, 1, count, TrackerCore.fields.length).getValues();
     var now = new Date();
+    var validated = [], diagnostics = [];
     values.forEach(function (row, offset) {
       if (!String(row[3]).trim()) return;
-      function set(col, value) { sheet.getRange(start + offset, col).setValue(value); }
-      if (!row[0]) { var id = nextId_(issues); set(1, id); issues.push({ id: id }); }
-      if (!row[1]) set(2, 'Task');
-      if (!row[5]) set(6, 'Backlog');
-      if (!row[6]) set(7, 'Medium');
-      if (row[14] === '') set(15, 0);
-      if (row[18] === '') set(19, now);
-      set(20, now);
-      if (row[20] === '') set(21, start + offset);
-      if (row[5] === 'Done') { set(15, 100); if (!row[11]) set(12, Utilities.parseDate(today_(book), book.getSpreadsheetTimeZone(), 'yyyy-MM-dd')); }
-      else if (e.range.getColumn() <= 6 && e.range.getLastColumn() >= 6) { set(12, ''); if (row[14] === 100) set(15, 0); }
+      if (!row[0]) row[0] = nextId_(issues);
+      if (!row[1]) row[1] = 'Task';
+      if (!row[5]) row[5] = 'Backlog';
+      if (!row[6]) row[6] = 'Medium';
+      if (row[14] === '') row[14] = 0;
+      if (row[18] === '') row[18] = now;
+      row[19] = now;
+      if (row[20] === '') row[20] = start + offset;
+      if (row[5] === 'Done') { row[14] = 100; if (!row[11]) row[11] = Utilities.parseDate(today_(book), book.getSpreadsheetTimeZone(), 'yyyy-MM-dd'); }
+      else if (e.range.getColumn() <= 6 && e.range.getLastColumn() >= 6) { row[11] = ''; if (row[14] === 100) row[14] = 0; }
+      var rowNumber = start + offset, issue = issueFromRow_(row, rowNumber, book, taskTypes), message = '';
+      if (issues.some(function (other) { return other.id && other.id === issue.id && other._row !== rowNumber; })) message = 'ID must be unique.';
+      else {
+        try { TrackerCore.validate(issue, issues.filter(function (other) { return other._row !== rowNumber; })); }
+        catch (error) { message = error && error.message ? error.message : String(error); }
+      }
+      diagnostics.push({ row: rowNumber, message: message });
+      if (!message) {
+        var oldIndex = issues.findIndex(function (other) { return other._row === rowNumber; });
+        if (oldIndex >= 0) issues[oldIndex] = issue; else issues.push(issue);
+        validated.push(issue);
+      }
+    });
+    // Persist the edited rectangle in one write. Validation errors leave the
+    // entered values intact and are attached to the row for correction.
+    sheet.getRange(start, 1, count, TrackerCore.fields.length).setValues(values);
+    diagnostics.forEach(function (item) {
+      var summary = sheet.getRange(item.row, 4);
+      if (summary.setNote) summary.setNote(item.message ? 'SheetFlow validation: ' + item.message : '');
     });
     SpreadsheetApp.flush();
+    validated.forEach(function (issue) {
+      var firstColumn = e.range.getColumn(), lastColumn = e.range.getLastColumn();
+      var changedFields = TrackerCore.fields.filter(function (field, index) { return index + 1 >= firstColumn && index + 1 <= lastColumn; }).map(function (field) { return field.key; });
+      if (changedFields.indexOf('updatedAt') < 0) changedFields.push('updatedAt');
+      historyService_().record(book, { entityId: issue.id, eventKind: 'direct_edit', actorId: editActorEmail_(e) || 'unknown', changedFields: changedFields, details: { source: 'sheet', row: issue._row } });
+    });
   });
+}
+function handleVersionedSheetEdit_(e) {
+  var sheet = e.range.getSheet(), book = sheet.getParent(), sheetName = sheet.getName();
+  var editorEmail = '';
+  try { editorEmail = e.user && e.user.getEmail ? e.user.getEmail() : ''; } catch (ignore) {}
+  try { authorizationService_().requireForEmail('write', editorEmail); }
+  catch (authError) { annotateRange_(e.range, 'SheetFlow could not process this edit: ' + authError.message); return; }
+  var tab = sheetName === 'Tasks' ? 'tasks' : 'projects', headers = SheetFlowSchema.headers(tab);
+  var actualHeaders = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+  if (actualHeaders.join('|') !== headers.join('|')) throw new Error(sheetName + ' headers do not match schema ' + SheetFlowSchema.version + '.');
+  var singleCell = e.range.getNumRows && e.range.getNumColumns && e.range.getNumRows() === 1 && e.range.getNumColumns() === 1;
+  var editedHeader = headers[e.range.getColumn() - 1];
+  if (singleCell && e.oldValue !== undefined && ['ID', 'Revision', 'Created At', 'Created By', 'Updated At', 'Updated By', 'Archived At', 'Archived By', 'Claimed By', 'Claimed At', 'Last Agent Activity'].indexOf(editedHeader) >= 0) {
+    e.range.setValue(e.oldValue); annotateRange_(e.range, 'This field is managed by SheetFlow and was restored.'); return;
+  }
+  var start = Math.max(2, e.range.getRow()), count = e.range.getLastRow() - start + 1;
+  var values = sheet.getRange(start, 1, count, headers.length).getValues();
+  var allIssues;
+  try { allIssues = readVersionedIssues_(book, false); }
+  catch (loadError) { annotateRange_(e.range, 'SheetFlow could not reconcile this edit: ' + loadError.message); return; }
+  var originalRows = new Map(allIssues.map(function (issue) { return [issue.id, issue]; }));
+  var idRows = new Set(allIssues.map(function (issue) { return issue.id; })), valid = [], notes = [], now = new Date();
+  var projectRecords = tab === 'tasks' ? [] : SheetFlowRepository.records(book, 'projects');
+  var defaultTaskType = 'algo';
+  if (typeof SheetFlowSettings !== 'undefined') {
+    var defaultSetting = SheetFlowSettings.read(book).find(function (item) { return item.category === 'workflow' && item.key === 'defaultTaskType'; });
+    if (defaultSetting && defaultSetting.value) defaultTaskType = String(defaultSetting.value).toLowerCase();
+  }
+  values.forEach(function (row, offset) {
+    var titleIndex = headers.indexOf(tab === 'tasks' ? 'Title' : 'Title');
+    if (!String(row[titleIndex] || '').trim()) return;
+    var record = {}; headers.forEach(function (header, index) { record[header] = row[index]; });
+    if (tab === 'tasks') {
+      if (!record.ID) record.ID = nextId_(allIssues);
+      if (!record.Kind) record.Kind = 'Task';
+      if (!record['Task Type ID']) record['Task Type ID'] = defaultTaskType;
+      if (!record['Project ID']) record['Project ID'] = (projectRecords.find(function (item) { return item['Entity Kind'] === 'Project'; }) || {}).ID || 'PROJECT-1';
+      if (!record.Status) record.Status = 'Backlog';
+      if (!record.Priority) record.Priority = 'Medium';
+      if (record['Estimate (h)'] === '') record['Estimate (h)'] = 0;
+      if (record['Time Spent (h)'] === '') record['Time Spent (h)'] = 0;
+      if (record['Progress (%)'] === '') record['Progress (%)'] = 0;
+      if (!record['Created At']) record['Created At'] = now;
+      record['Updated At'] = now;
+      if (!record.Revision) record.Revision = 1;
+      if (!record.Order) record.Order = (allIssues.length + offset + 1) * 1000;
+      if (!record['Legacy JSON']) record['Legacy JSON'] = JSON.stringify({ type: record.Kind === 'Story' ? 'Story' : 'Task', status: record.Status === 'Ready' ? 'To Do' : record.Status, priority: record.Priority, rank: Number(record.Order) || 0 });
+    } else {
+      if (String(record['Entity Kind']) !== 'Epic') {
+        notes.push({ row: start + offset, message: 'Create or edit Epic records here. Project management is not yet supported.' });
+        return;
+      }
+      if (!record.ID) record.ID = nextId_(allIssues);
+      if (!record['Project ID']) record['Project ID'] = (projectRecords.find(function (item) { return item['Entity Kind'] === 'Project'; }) || {}).ID || 'PROJECT-1';
+      if (record.Active === '' || record.Active == null) record.Active = true;
+      if (!record.Revision) record.Revision = 1;
+      if (!record.Order) record.Order = (allIssues.length + offset + 1) * 1000;
+      if (!record['Legacy JSON']) record['Legacy JSON'] = JSON.stringify({ type: 'Epic', status: 'Backlog', priority: 'Medium', rank: Number(record.Order) || 0 });
+    }
+    var legacyState = {};
+    try { legacyState = JSON.parse(String(record['Legacy JSON'] || '{}')); } catch (ignore) {}
+    var managed = legacyState.__sheetflow || {}, managedRestore = false, managedMessage = '';
+    var knownId = String(managed.id || legacyState.id || '');
+    if (knownId && String(record.ID || '') !== knownId) { record.ID = knownId; managedRestore = true; managedMessage = 'ID is managed by SheetFlow and was restored.'; }
+    if (managed.revision != null && Number(record.Revision) !== Number(managed.revision)) { record.Revision = Number(managed.revision); managedRestore = true; managedMessage = 'Revision is managed by SheetFlow and was restored.'; }
+    if (tab === 'tasks' && managed.createdAt && comparableTimestamp_(record['Created At']) !== String(managed.createdAt)) { record['Created At'] = new Date(managed.createdAt); managedRestore = true; managedMessage = 'Created At is managed by SheetFlow and was restored.'; }
+    if (tab === 'projects' && managed.active != null && Boolean(record.Active) !== Boolean(managed.active)) { record.Active = Boolean(managed.active); managedRestore = true; managedMessage = 'Active state is managed by SheetFlow and was restored.'; }
+    var issue = versionedRecordToIssue_(record, book, tab);
+    var message = managedMessage, rowNumber = start + offset;
+    var sameRow = allIssues.find(function (item) { return item._row === rowNumber && item._storageTab === tab; });
+    if (!message && (!issue.id || (idRows.has(issue.id) && (!sameRow || sameRow.id !== issue.id)))) message = 'ID must be unique.';
+    else if (!message) {
+      try {
+        validateVersionedMembership_(record, issue, allIssues);
+        TrackerCore.validate(issue, allIssues.filter(function (other) { return other.id !== issue.id; }));
+      } catch (error) { message = error && error.message ? error.message : String(error); }
+    }
+    if (tab === 'tasks' && record.Kind !== 'Story' && record.Kind !== 'Task' && record.Kind !== 'Subtask') message = 'Kind must be Story, Task, or Subtask.';
+    notes.push({ row: start + offset, message: message });
+    if (message && managedRestore) values[offset] = headers.map(function (header) { return record[header] == null ? '' : record[header]; });
+    if (!message) {
+      var isUpdate = Boolean(sameRow && sameRow.id === issue.id);
+      record.Revision = isUpdate ? (Number(record.Revision) || 0) + 1 : Math.max(1, Number(record.Revision) || 1);
+      legacyState.__sheetflow = managedMetadata_(record, tab, legacyState);
+      record['Legacy JSON'] = JSON.stringify(legacyState);
+      values[offset] = headers.map(function (header) { return record[header] == null ? '' : record[header]; });
+      var old = isUpdate ? sameRow : null, oldIndex = sameRow ? allIssues.indexOf(sameRow) : -1;
+      issue._row = start + offset;
+      if (oldIndex >= 0) allIssues[oldIndex] = issue; else allIssues.push(issue);
+      var firstColumn = e.range.getColumn(), lastColumn = e.range.getLastColumn();
+      var changedFields = headers.filter(function (_, index) { return index + 1 >= firstColumn && index + 1 <= lastColumn; });
+      valid.push({ id: issue.id, before: old, record: record, tab: tab, row: start + offset, changedFields: changedFields });
+    }
+  });
+  sheet.getRange(start, 1, count, headers.length).setValues(values);
+  notes.forEach(function (item) { annotateRange_(sheet.getRange(item.row, headers.indexOf('Title') + 1), item.message ? 'SheetFlow validation: ' + item.message : ''); });
+  SpreadsheetApp.flush();
+  valid.forEach(function (entry) {
+    var source = entry.tab === 'tasks' ? 'Tasks' : 'Projects and Epics';
+    historyService_().record(book, { entityId: entry.id, eventKind: 'direct_edit', actorId: editActorEmail_(e) || 'unknown', changedFields: entry.changedFields, details: { source: source, row: entry.row } });
+  });
+}
+function validateVersionedMembership_(record, issue, issues) {
+  var byId = new Map(issues.map(function (item) { return [item.id, item]; }));
+  var parent = issue.parentId ? byId.get(issue.parentId) : null;
+  if (issue.parentId && !parent) throw new Error('Parent ID must reference an existing active item.');
+  var expectedEpic = parent && parent.type === 'Epic' ? parent.id : '';
+  var ancestor = parent, seen = {};
+  while (ancestor && ancestor.type !== 'Epic' && ancestor.parentId && !seen[ancestor.id]) { seen[ancestor.id] = true; ancestor = byId.get(ancestor.parentId); }
+  if (!expectedEpic && ancestor && ancestor.type === 'Epic') expectedEpic = ancestor.id;
+  if (String(record['Epic ID'] || '') !== expectedEpic) throw new Error("Epic ID must match the item's Epic ancestor.");
+  if (record['Parent Task ID'] && parent && parent.type === 'Epic') throw new Error('Use Epic ID for a direct Epic child; Parent Task ID must reference a Story or Task.');
+}
+function annotateRange_(range, message) { if (range && range.setNote) range.setNote(message); }
+function editActorEmail_(e) { try { return e && e.user && e.user.getEmail ? String(e.user.getEmail() || '') : ''; } catch (ignore) { return ''; } }
+function comparableTimestamp_(value) { return value instanceof Date ? value.toISOString() : String(value || ''); }
+function issueFromRow_(row, rowNumber, book, taskTypes) {
+  var issue = {};
+  TrackerCore.fields.forEach(function (field, index) {
+    var value = row[index];
+    if (value instanceof Date) value = field.kind === 'date' ? Utilities.formatDate(value, book.getSpreadsheetTimeZone(), 'yyyy-MM-dd') : value.toISOString();
+    if (field.kind === 'number') value = value === '' ? 0 : Number(value); else value = String(value == null ? '' : value);
+    issue[field.key] = value;
+  });
+  issue.taskTypeId = taskTypes[issue.id] || 'algo';
+  issue._row = rowNumber;
+  return issue;
 }
 function getBook_() {
   var id = environmentSpreadsheetId_();
@@ -165,13 +489,149 @@ function historyService_() {
 }
 function authorizationService_() {
   if (typeof SheetFlowAuth !== 'undefined') return SheetFlowAuth;
-  return { require: function () { return { id: 'test', role: 'administrator' }; } };
+  return { require: function () { return { id: 'test', role: 'administrator' }; }, requireForEmail: function () { return { id: 'test', role: 'administrator' }; } };
 }
 function assertHeaders_(sheet) {
   var actual = sheet.getRange(1, 1, 1, TrackerCore.fields.length).getValues()[0];
   if (actual.join('|') !== TrackerCore.fields.map(function (f) { return f.label; }).join('|')) throw new Error('Issues has different column headers. Keep the documented columns in their original order, or rename the existing tab before setup.');
 }
+function versionedRepositoryActive_(book) {
+  var active = getRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA') === '2';
+  if (active && typeof SheetFlowSchema !== 'undefined' && !SheetFlowSchema.report(book).ready) throw new Error('The versioned repository is active, but its schema is incomplete. Run setupTracker and repair the schema before continuing.');
+  return active;
+}
+function repositoryPropertyKey_(base) {
+  var environment = typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.config().name : '';
+  return environment ? base + '_' + String(environment).toUpperCase() : base;
+}
+function getRepositoryProperty_(base) { return PropertiesService.getScriptProperties().getProperty(repositoryPropertyKey_(base)) || ''; }
+function setRepositoryProperty_(base, value) { PropertiesService.getScriptProperties().setProperty(repositoryPropertyKey_(base), String(value)); }
+function deleteRepositoryProperty_(base) { PropertiesService.getScriptProperties().deleteProperty(repositoryPropertyKey_(base)); }
+function writeIssue_(book, issue, current) {
+  if (!versionedRepositoryActive_(book)) {
+    var legacySheet = book.getSheetByName('Issues'), legacyRow = current ? current._row : Math.max(2, legacySheet.getLastRow() + 1);
+    ensureRows_(legacySheet, legacyRow);
+    legacySheet.getRange(legacyRow, 1, 1, TrackerCore.fields.length).setValues([toRow_(issue, book)]);
+    return;
+  }
+  if (typeof SheetFlowRepository === 'undefined') throw new Error('Repository.js is missing. Push the complete Apps Script source before activating schema v2.');
+  var issueFields = {};
+  TrackerCore.fields.forEach(function (field) { issueFields[field.key] = issue[field.key]; });
+  var legacy = current && current._legacyData ? Object.assign({}, current._legacyData) : {};
+  Object.keys(issueFields).forEach(function (key) { legacy[key] = issueFields[key]; });
+  var legacyJson, revision = Number(current && current._storageRevision) || 0;
+  if (issue.type === 'Epic') {
+    var projects = SheetFlowRepository.records(book, 'projects');
+    var projectRecord = projects.find(function (item) { return String(item.ID) === issue.id; }) || {};
+    projectRecord.ID = issue.id; projectRecord['Entity Kind'] = 'Epic';
+    projectRecord['Project ID'] = projectRecord['Project ID'] || (projects.find(function (item) { return item['Entity Kind'] === 'Project'; }) || {}).ID || 'PROJECT-1';
+    projectRecord.Title = issue.summary; projectRecord.Description = issue.description || '';
+    projectRecord['Owner ID'] = issue.assignee || ''; projectRecord['Start Date'] = appDateToSheet_(issue.startDate, book);
+    projectRecord['Due Date'] = appDateToSheet_(issue.dueDate, book); projectRecord.Order = issue.rank;
+    projectRecord.Active = true; projectRecord['Archived At'] = ''; projectRecord.Revision = revision + 1;
+    legacy.__sheetflow = managedMetadata_(projectRecord, 'projects', legacy); legacyJson = JSON.stringify(legacy); projectRecord['Legacy JSON'] = legacyJson;
+    SheetFlowRepository.upsert(book, 'projects', projectRecord);
+    return;
+  }
+  var taskRecords = SheetFlowRepository.records(book, 'tasks');
+  var taskRecord = taskRecords.find(function (item) { return String(item.ID) === issue.id; }) || {};
+  var allIssues = current ? readVersionedIssues_(book, true) : readVersionedIssues_(book, false);
+  var parents = new Map(allIssues.map(function (item) { return [item.id, item]; }));
+  var parent = parents.get(issue.parentId), parentTaskId = parent && parent.type !== 'Epic' ? parent.id : '';
+  var epicId = parent && parent.type === 'Epic' ? parent.id : '';
+  var ancestor = parent, seen = {};
+  while (ancestor && ancestor.type !== 'Epic' && ancestor.parentId && !seen[ancestor.id]) {
+    seen[ancestor.id] = true; ancestor = parents.get(ancestor.parentId);
+  }
+  if (!epicId && ancestor && ancestor.type === 'Epic') epicId = ancestor.id;
+  var epicRecord = epicId ? SheetFlowRepository.records(book, 'projects').find(function (item) { return String(item.ID) === epicId; }) : null;
+  taskRecord.ID = issue.id; taskRecord.Kind = issue.type === 'Story' ? 'Story' : (taskRecord.Kind === 'Subtask' ? 'Subtask' : 'Task');
+  taskRecord['Task Type ID'] = issue.taskTypeId || 'algo'; taskRecord['Project ID'] = epicRecord && epicRecord['Project ID'] || (SheetFlowRepository.records(book, 'projects').find(function (item) { return item['Entity Kind'] === 'Project'; }) || {}).ID || 'PROJECT-1';
+  taskRecord['Epic ID'] = epicId; taskRecord['Parent Task ID'] = parentTaskId; taskRecord.Title = issue.summary; taskRecord.Description = issue.description || '';
+  taskRecord['Acceptance Criteria'] = taskRecord['Acceptance Criteria'] || ''; taskRecord.Status = issue.status === 'To Do' ? 'Ready' : issue.status;
+  taskRecord.Priority = issue.priority; taskRecord['Assignee ID'] = issue.assignee; taskRecord.Reporter = issue.reporter;
+  taskRecord['Start Date'] = appDateToSheet_(issue.startDate, book); taskRecord['Due Date'] = appDateToSheet_(issue.dueDate, book);
+  taskRecord['Completed Date'] = appDateToSheet_(issue.completedDate, book); taskRecord['Estimate (h)'] = issue.estimate; taskRecord['Time Spent (h)'] = issue.timeSpent;
+  taskRecord['Progress (%)'] = issue.progress; taskRecord.Tags = issue.labels; taskRecord.Sprint = issue.sprint; taskRecord.Dependencies = issue.dependencies;
+  taskRecord['Created At'] = appTimestampToSheet_(issue.createdAt); taskRecord['Updated At'] = appTimestampToSheet_(issue.updatedAt);
+  taskRecord.Revision = revision + 1; taskRecord['Archived At'] = ''; taskRecord.Order = issue.rank;
+  legacy.__sheetflow = managedMetadata_(taskRecord, 'tasks'); legacyJson = JSON.stringify(legacy); taskRecord['Legacy JSON'] = legacyJson;
+  SheetFlowRepository.upsert(book, 'tasks', taskRecord);
+}
+function readVersionedIssues_(book, includeArchived) {
+  if (typeof SheetFlowRepository === 'undefined') throw new Error('Repository.js is missing. Push the complete Apps Script source before activating schema v2.');
+  var tasks = SheetFlowRepository.records(book, 'tasks'), projects = SheetFlowRepository.records(book, 'projects'), issues = [];
+  tasks.forEach(function (record) { if (includeArchived || !record['Archived At']) issues.push(versionedRecordToIssue_(record, book, 'tasks')); });
+  projects.forEach(function (record) {
+    if (String(record['Entity Kind']) !== 'Epic' || (!includeArchived && (record.Active === false || record['Archived At']))) return;
+    issues.push(versionedRecordToIssue_(record, book, 'projects'));
+  });
+  var seen = {};
+  issues.forEach(function (issue) { if (seen[issue.id]) throw new Error('Duplicate ID ' + issue.id + ' in the versioned repository. Each ID must be unique.'); seen[issue.id] = true; });
+  return TrackerCore.sorted(issues);
+}
+function versionedRecordToIssue_(record, book, tab) {
+  var issue = TrackerCore.blank(), legacy = {};
+  try { legacy = JSON.parse(String(record['Legacy JSON'] || '{}')); } catch (ignore) {}
+  Object.keys(legacy).forEach(function (key) { if (key !== '__sheetflow') issue[key] = legacy[key]; });
+  var epic = tab === 'projects';
+  issue.id = String(record.ID || ''); issue.type = epic ? 'Epic' : record.Kind === 'Story' ? 'Story' : (legacy.type === 'Bug' ? 'Bug' : 'Task');
+  issue.summary = String(epic ? record.Title || '' : record.Title || ''); issue.description = String(record.Description || '');
+  issue.parentId = epic ? '' : String(record['Parent Task ID'] || record['Epic ID'] || '');
+  issue.taskTypeId = epic ? String(legacy.taskTypeId || 'algo') : String(record['Task Type ID'] || legacy.taskTypeId || 'algo');
+  issue.assignee = String(epic ? record['Owner ID'] || '' : record['Assignee ID'] || '');
+  if (!epic) {
+    issue.reporter = String(record.Reporter || ''); issue.status = record.Status === 'Ready' ? 'To Do' : String(record.Status || 'Backlog');
+    issue.priority = String(record.Priority || 'Medium'); issue.completedDate = schemaDateToApp_(record['Completed Date'], book);
+    issue.estimate = Number(record['Estimate (h)'] || 0); issue.timeSpent = Number(record['Time Spent (h)'] || 0); issue.progress = Number(record['Progress (%)'] || 0);
+    issue.labels = String(record.Tags || ''); issue.sprint = String(record.Sprint || ''); issue.dependencies = String(record.Dependencies || '');
+  }
+  issue.startDate = schemaDateToApp_(record['Start Date'], book); issue.dueDate = schemaDateToApp_(record['Due Date'], book);
+  issue.createdAt = schemaTimestampToApp_(record['Created At'] || issue.createdAt); issue.updatedAt = schemaTimestampToApp_(record['Updated At'] || issue.updatedAt);
+  issue.rank = Number(record.Order || 0); issue.version = repositoryVersion_(record); issue._row = record._row; issue._storageTab = tab;
+  issue._storageRevision = Number(record.Revision) || 0; issue._legacyData = legacy;
+  issue._archivedAt = record['Archived At'] || ''; issue._record = record;
+  return issue;
+}
+function archiveVersionedIssue_(book, issue) {
+  var record = Object.assign({}, issue._record || {}), archivedAt = new Date();
+  record['Archived At'] = archivedAt; record['Archived By'] = (typeof SheetFlowAuth !== 'undefined' ? SheetFlowAuth.actor().id : 'unknown'); record.Active = false; record.Revision = (Number(record.Revision) || 0) + 1;
+  var legacy = {}; try { legacy = JSON.parse(String(record['Legacy JSON'] || '{}')); } catch (ignore) {}
+  legacy.__sheetflow = managedMetadata_(record, issue._storageTab, legacy); record['Legacy JSON'] = JSON.stringify(legacy);
+  SheetFlowRepository.upsert(book, issue._storageTab, record);
+}
+function restoreVersionedIssue_(book, issue) {
+  var record = Object.assign({}, issue._record || {}); record['Archived At'] = ''; record['Archived By'] = ''; record.Active = true; record.Revision = (Number(record.Revision) || 0) + 1;
+  var legacy = {}; try { legacy = JSON.parse(String(record['Legacy JSON'] || '{}')); } catch (ignore) {}
+  legacy.__sheetflow = managedMetadata_(record, issue._storageTab, legacy); record['Legacy JSON'] = JSON.stringify(legacy);
+  SheetFlowRepository.upsert(book, issue._storageTab, record);
+}
+function appDateToSheet_(value, book) { return value ? Utilities.parseDate(String(value), book.getSpreadsheetTimeZone(), 'yyyy-MM-dd') : ''; }
+function schemaDateToApp_(value, book) { return value instanceof Date ? Utilities.formatDate(value, book.getSpreadsheetTimeZone(), 'yyyy-MM-dd') : String(value || '').slice(0, 10); }
+function appTimestampToSheet_(value) { return value ? new Date(value) : ''; }
+function schemaTimestampToApp_(value) { return value instanceof Date ? value.toISOString() : String(value || ''); }
+function repositoryVersion_(record) {
+  var source = {}; Object.keys(record).forEach(function (key) { if (key !== '_row') source[key] = record[key]; });
+  return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(source)));
+}
+function issueDataDigest_(issues) {
+  var rows = TrackerCore.sorted(issues).map(function (issue) { return TrackerCore.fields.map(function (field) { return issue[field.key] == null ? '' : issue[field.key]; }); });
+  return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(rows)));
+}
+function managedMetadata_(record, tab, legacy) {
+  function stamp(value) { return value instanceof Date ? value.toISOString() : String(value || ''); }
+  return {
+    id: String(record.ID || ''), revision: Number(record.Revision) || 0,
+    createdAt: stamp(tab === 'tasks' ? record['Created At'] : legacy && legacy.createdAt),
+    createdBy: String(tab === 'tasks' ? record['Created By'] || '' : ''),
+    archivedAt: stamp(record['Archived At']), archivedBy: String(record['Archived By'] || ''),
+    claimedBy: String(record['Claimed By'] || ''), claimedAt: stamp(record['Claimed At']),
+    updatedBy: String(record['Updated By'] || ''), lastAgentActivity: stamp(record['Last Agent Activity']),
+    active: tab === 'projects' ? record.Active !== false : null
+  };
+}
 function readIssues_(book) {
+  if (versionedRepositoryActive_(book)) return readVersionedIssues_(book, false);
   var sheet = book.getSheetByName('Issues');
   if (sheet.getLastRow() < 2) return [];
   var seen = {};

@@ -32,11 +32,21 @@ var SheetFlowRepository = (function () {
     target.getRange(Math.max(2, target.getLastRow() + 1), 1, values.length, values[0].length).setValues(values);
     return records(book, tab).slice(-records_.length);
   }
+  function upsert(book, tab, record) {
+    var definition_ = definition(tab), target = sheet(book, tab), idHeader = definition_.headers[0];
+    var current = records(book, tab), matches = current.filter(function (item) { return String(item[idHeader]) === String(record[idHeader]); });
+    if (matches.length > 1) throw new Error('Duplicate ID ' + record[idHeader] + ' in ' + definition_.name + '.');
+    var values = rows(tab, [record])[0];
+    var row = matches.length ? matches[0]._row : Math.max(2, target.getLastRow() + 1);
+    target.getRange(row, 1, 1, definition_.headers.length).setValues([values]);
+    var result = Object.assign({}, record, { _row: row });
+    return result;
+  }
   function replace(book, tab, records_) {
     var definition_ = definition(tab), target = sheet(book, tab);
     if (target.getLastRow() > 1) target.getRange(2, 1, target.getLastRow() - 1, definition_.headers.length).clearContent();
     if (records_.length) target.getRange(2, 1, records_.length, definition_.headers.length).setValues(rows(tab, records_));
     return records(book, tab);
   }
-  return { records: records, rows: rows, append: append, replace: replace };
+  return { records: records, rows: rows, append: append, upsert: upsert, replace: replace };
 })();

@@ -60,6 +60,13 @@ test('parent types and existence are enforced', () => {
   assert.throws(() => C.validate(make({ parentId: 'PRJ-404' }), []));
   assert.throws(() => C.validate(make({ parentId: 'PRJ-1' }), []));
 });
+test('tasks can be nested below tasks but parent relationships cannot cycle', () => {
+  const epic = make({ id: 'PRJ-1', type: 'Epic', summary: 'Epic' });
+  const parent = make({ id: 'PRJ-2', type: 'Task', parentId: epic.id, summary: 'Parent task' });
+  const child = make({ id: 'PRJ-3', type: 'Task', parentId: parent.id, summary: 'Child task' });
+  assert.doesNotThrow(() => C.validate(child, [epic, parent]));
+  assert.throws(() => C.validate(Object.assign({}, parent, { parentId: child.id }), [epic, child]), /Parent hierarchy cannot form a cycle/);
+});
 test('changing parent type cannot orphan its children', () => {
   const epic = make({ type: 'Epic' }), story = make({ id: 'PRJ-2', type: 'Story', parentId: epic.id });
   assert.throws(() => C.validate({ ...epic, type: 'Task' }, [epic, story]));

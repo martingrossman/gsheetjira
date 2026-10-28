@@ -65,7 +65,7 @@ clasp show-file-status
 clasp push
 ```
 
-The allowlist in `.claspignore` uploads the Apps Script runtime files: `Code.js`, `Core.js`, `CoreScript.html`, `Index.html`, `Styles.html`, `Client.html`, `Schema.js`, `Migrations.js`, `Environment.js`, `Repository.js`, `History.js`, `Authorization.js`, `Settings.js`, `Ordering.js`, `Comments.js`, and `appsscript.json`. Tests, build scripts, `IMPLEMENTATION_PLAN.md`, and `dist/` are excluded.
+The allowlist in `.claspignore` uploads the Apps Script runtime files: `Code.js`, `Core.js`, `CoreScript.html`, `Index.html`, `Styles.html`, `Client.html`, `QuickAdd.html`, `Schema.js`, `Migrations.js`, `Environment.js`, `Repository.js`, `History.js`, `Authorization.js`, `Settings.js`, `Ordering.js`, `Comments.js`, and `appsscript.json`. Tests, build scripts, `IMPLEMENTATION_PLAN.md`, and `dist/` are excluded.
 
 Alternatively, open a Google Sheet, choose **Extensions → Apps Script**, and add those files manually. Add `Code.js` and `Core.js` as script files; Apps Script may display their extension as `.gs`. Keep all four HTML filenames exactly as shown, including the generated `CoreScript.html`. The project uses the V8 runtime.
 
@@ -76,7 +76,7 @@ Run **`setupTracker`** in the Apps Script editor and approve Google's authorizat
 - In a spreadsheet-bound script, setup uses the bound spreadsheet.
 - In a standalone script, setup creates a spreadsheet if no target is configured.
 - To use a specific existing spreadsheet from a standalone script, first add a script property named **`SPREADSHEET_ID`** in **Project Settings → Script properties**. Use the ID from its URL.
-- Setup creates and formats an **Issues** tab with 21 columns, frozen headers, filtering, date/numeric validation, status colors, and overdue highlighting. Other tabs are preserved. An existing Issues tab with different headers is rejected instead of overwritten.
+- Setup creates and formats the legacy **Issues** tab plus the versioned v2 tabs, frozen headers, filtering, date/numeric validation, status colors, and overdue highlighting. Existing records are preserved. An Issues tab with different headers is rejected instead of overwritten.
 - Setup installs an edit trigger so typing or pasting issues directly in Sheets assigns IDs, fills defaults, and updates timestamps. Run setup once as the project owner. A bound script also provides a **SheetFlow** menu when the spreadsheet reopens.
 - The spreadsheet URL appears in the execution log and setup's return value. The deployed app also provides an **Open Google Sheet** link.
 
@@ -102,14 +102,16 @@ After source changes, rebuild, push, then **Deploy → Manage deployments → Ed
 
 ### Schema v2 migration
 
-The repository now includes a non-destructive schema migration foundation. After pushing the new Apps Script files, run **SheetFlow → Check schema health**, then **SheetFlow → Preview v2 migration**. Resolve every duplicate or invalid legacy row reported by the dry run before choosing **Migrate legacy Issues to v2 tabs**. The migration creates versioned `Tasks`, `Projects and Epics`, `Team`, `Holidays and Availability`, `Settings`, `Change History`, and `_System` tabs, preserves legacy IDs and values, and leaves the original `Issues` tab intact for rollback and comparison.
+The repository now includes a non-destructive schema migration. Run **SheetFlow → Check schema health**, then **Preview v2 migration**. Resolve every duplicate or invalid row before choosing **Migrate legacy Issues to v2 tabs**. Migration preserves IDs, hierarchy, and each full legacy record in `Legacy JSON`; repeated runs are safe when the targets still match the source. It leaves `Issues` intact.
+
+Review the migration output in the test spreadsheet before choosing **SheetFlow → Activate v2 repository**. Activation compares source and target IDs, validates hierarchy, and routes app reads/writes through `Tasks` and `Projects and Epics`. The retained `Issues` tab is a migration snapshot while v2 is active. Direct v2 task/epic edits get defaults and validation notes. **Roll back to Issues repository** copies active v2 records back into `Issues`; if someone edits that legacy copy after rollback, activation stops until those changes are reconciled. This workflow has local mock coverage; run the migration and role smoke checks in a separate test workbook before using shared or production data.
 
 ## How it works
 
 SheetFlow has one shared issue model and two storage adapters:
 
 1. The browser demo loads sample issues into `localStorage`. It is useful for UI development and does not share data with other browsers or Google Sheets.
-2. The Apps Script version calls server functions through `google.script.run`. The server reads and writes the `Issues` sheet, serializes dates, assigns IDs, validates relationships, and uses a script lock plus content versions to detect conflicting edits.
+2. The Apps Script version calls server functions through `google.script.run`. It starts on `Issues` for compatibility. After an administrator completes and activates migration, the server reads and writes the versioned `Tasks` and `Projects and Epics` tabs. Both paths serialize dates, validate relationships, and use a script lock plus content versions.
 3. `Core.js` contains the shared model and validation rules. `scripts/build.mjs` copies it into `CoreScript.html` for the browser and bundles the standalone `dist/index.html`.
 4. `Index.html`, `Client.html`, and `Styles.html` provide the web app shell, views, interactions, and responsive styling. Apps Script serves the same client with the Google Sheets adapter enabled.
 5. The three views render the same issue collection: Sheet for direct editing, Kanban for status and epic swimlanes, and Gantt for date scheduling. Filters and issue details are shared across views.
@@ -118,9 +120,12 @@ In the Kanban view, each epic is rendered as a horizontal swimlane containing th
 
 ## What you can do
 
+- **Quick add:** use **SheetFlow → Quick add work item** for title-and-Enter creation with Task/Story/Epic selection, configured defaults, and optional Epic parent.
+- **Paste list:** use **Paste list** to preview one Task title per line and submit up to 100 items. A pending batch is stored locally and can be retried with the same per-item operation IDs.
+
 ### Separate development, test, and production targets
 
-The Apps Script project supports three explicit environment names: `development`, `test`, and `production`. Configure the target spreadsheet from the Apps Script editor before running setup:
+The Apps Script project supports three explicit environment names: `development`, `test`, and `production`. Configure separate Apps Script projects and workbook IDs for each environment; environment names inside one script project alone do not isolate triggers or credentials. Configure the target spreadsheet from the Apps Script editor before running setup:
 
 ```js
 configureTrackerEnvironment('test', 'TEST_SPREADSHEET_ID')
@@ -130,11 +135,11 @@ Use `configureTrackerEnvironment('production', 'PRODUCTION_SPREADSHEET_ID')` onl
 
 After setup, run **SheetFlow → Run startup health check**. It verifies the selected spreadsheet, schema tabs, and installed edit trigger. Keep the deployment owner-only until shared identity and role checks have been verified.
 
-The v2 tabs also provide an append-only **Change History** log and `_System` idempotency receipts. App saves record created/updated events when the migration tabs exist, and `getTaskHistory(id, limit, offset)` returns the newest events first. `saveIssue` accepts an optional operation ID so a caller can safely reuse it after an ambiguous timeout.
+The active repository is stored per configured environment. V2 provides an append-only **Change History** log and `_System` idempotency receipts. App saves record created/updated events, and `getTaskHistory(id, limit, offset)` returns the newest events first. The browser supplies operation IDs for create, update, move, and quick-add retries; delete and comment mutations still need the same idempotency treatment.
 
 ### Authorization foundation
 
-The server now exposes `getTrackerActor`, `configureTrackerRole(email, role)`, and `setTrackerAuthorizationEnforced(true|false)`. Roles are `administrator`, `editor`, `viewer`, and `agent`; writes require editor/agent/admin, configuration requires admin, and acceptance is admin-only. Enforcement is disabled by default to preserve the existing owner-only deployment. Configure roles and verify the active identity in the test deployment before enabling it for shared access.
+The server exposes `getTrackerActor`, `configureTrackerRole(email, role)`, and `setTrackerAuthorizationEnforced(true|false)`. Roles are `administrator`, `editor`, `viewer`, and `agent`; writes require editor/agent/admin, configuration requires admin, and acceptance is admin-only. Enforcement remains disabled by default for the owner-only deployment. When enabled, an unavailable Google identity is rejected, unmapped users are viewers (even if the configured default is administrator), and enabling enforcement requires an available active-user email. Verify this in the separate test deployment before sharing. This app role model does not override direct Google Sheets sharing permissions.
 
 The migration seeds stable task-type settings (`algo`, `data`, `requirements`, and `bug`) plus default workflow values. Read them with `getTrackerSettings()` and update an existing setting with the administrator-only `updateTrackerSetting(id, value, active)` function. Type associations use stable IDs so labels can be renamed without rewriting task history.
 
@@ -183,11 +188,13 @@ To add issues directly in Sheets, enter or paste a **Summary** in column D and f
 
 ## Saving and collaboration
 
-App edits save immediately to Sheets. A script lock serializes app writes. A content hash detects stale edits, including changes made directly in Sheets even if their timestamp has not changed. On conflict, the app retains your open form and tells you to refresh before trying again. Copy unsaved text before closing and reopening the editor to load the newest issue.
+App edits save to Sheets; detail text autosaves after a short pause and dates/selects save immediately. Client saves queue per issue while independent issues can save in parallel. A script lock serializes server writes. A content hash detects stale edits, including changes made directly in Sheets even if their timestamp has not changed. Failed saves keep a local draft and can be retried with the same operation ID. On a detected revision conflict, **Compare with latest** shows field differences and offers to load the latest copy; **Discard draft** removes the local copy after confirmation. Pasted batches keep per-item operation IDs across retries. Automatic merging is not implemented.
+
+**Undo** reverses the most recent acknowledged edit, reorder, move, or schedule change from this browser, provided the issue revision has not changed since. It records the reversal as a new server change. Create, batch, comment, and archive actions are not undoable yet.
 
 The cloud app refreshes every 45 seconds while visible and not editing, or immediately using **Refresh**. This is polling, not simultaneous live cursors. Native Sheet edits are not transactional with script writes. Avoid editing the same row at precisely the same time in Sheets and the web app.
 
-Native Sheets dropdowns enforce basic types, statuses, priorities, dates, and numeric limits. Cross-row hierarchy and dependency checks run on web-app saves; manual Sheets edits can bypass them. Keep references valid and due dates on or after start. Duplicate IDs and altered headers produce explicit load errors.
+Native Sheets dropdowns enforce basic types, statuses, priorities, dates, and numeric limits. Direct edits in `Issues`, and in `Tasks`/Epic rows after v2 activation, run through validation; invalid input stays visible with a row note. Generated IDs and revision fields are restored when a single-cell edit exposes the old value, and the v2 migration metadata also protects those fields during bulk edits. Settings/team/calendar cells still need their full validation workflow. While v2 is active, `Issues` is read-only; the trigger adds a note directing edits to the versioned tabs.
 
 Dependencies are informational: the app prevents cyclic links but does not automatically shift successors or enforce dependency timing. Gantt windows show 56 days in day zoom or 112 in week zoom. Use the date picker to reach other periods.
 
@@ -197,7 +204,7 @@ Dependencies are informational: the app prevents cyclic links but does not autom
 npm run check
 ```
 
-This builds the standalone HTML, regenerates the browser model, syntax-checks browser/server JavaScript, and runs 28 Node tests. Tests cover hierarchy, dependency cycles, dates, completion/reopening, CSV escaping, sheet serialization, stale edits, row sorting, ID allocation, direct multirow pastes, safe deletion, and setup with non-chainable frozen-pane setters. Re-running setup is tested to preserve issues and reuse the existing spreadsheet and edit trigger. Server tests use an in-memory Apps Script service mock.
+This builds the standalone HTML, regenerates the browser model, syntax-checks browser/server JavaScript, and runs the Node suite. Tests cover migration repeatability/cutover/rollback, v2 repository CRUD and archive/restore, authorization rules, hierarchy/dependency cycles, dates, direct-edit validation, stale edits, row sorting, ID allocation, CSV escaping, and setup behavior. Server tests use an in-memory Apps Script service mock; they do not replace the separate live test-workbook smoke test.
 
 The local browser workflow was also exercised for creation, Kanban dragging, inline sheet edits, Gantt dragging/resizing, persistence across reloads, filters, validation, CSV download, and mobile layouts. Live Google authorization, native Sheet formatting, and the deployed Apps Script runtime still need a smoke test after deployment.
 
@@ -205,6 +212,7 @@ Source layout:
 
 ```text
 Code.js              Apps Script storage, setup, triggers, and web app entry points
+QuickAdd.html        Google Sheets quick-add sidebar
 Core.js              Shared model, validation, dates, CSV, and samples
 CoreScript.html      Generated browser copy of Core.js; do not edit directly
 Index.html           Apps Script page template
