@@ -39,6 +39,7 @@
   const draftStorageKey = 'sheetflow.pending-drafts.v1';
   const quickQueueStorageKey = 'sheetflow.quick-queue.v1';
   const bulkDraftStorageKey = 'sheetflow.pending-batch.v1';
+  const duplicateDraftStorageKey = 'sheetflow.pending-duplicate.v1';
   const localReceiptStorageKey = 'sheetflow.local-receipts.v1';
   const undoStorageKey = 'sheetflow.undo.v1';
   const uiStorageKey = 'sheetflow.ui.v1';
@@ -53,11 +54,12 @@
     order.unshift('id');
     return order;
   }
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], selectedIssueIds: [], bulkEditDraft: null, savedViews: [], activeSavedView: '', visibleColumns: defaultSheetColumnOrder.slice(), collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], selectedIssueIds: [], bulkEditDraft: null, pendingDuplicate: null, savedViews: [], activeSavedView: '', visibleColumns: defaultSheetColumnOrder.slice(), collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { state.quickQueue = JSON.parse(localStorage.getItem(quickQueueStorageKey) || '[]') || []; } catch (ignore) { state.quickQueue = []; }
+  try { state.pendingDuplicate = JSON.parse(localStorage.getItem(duplicateDraftStorageKey) || 'null'); } catch (ignore) { state.pendingDuplicate = null; }
   try { state.bulkDraft = JSON.parse(localStorage.getItem(bulkDraftStorageKey) || 'null'); } catch (ignore) { state.bulkDraft = null; }
   try { state.undoStack = JSON.parse(localStorage.getItem(undoStorageKey) || '[]') || []; } catch (ignore) { state.undoStack = []; }
   try { const saved = JSON.parse(localStorage.getItem(savedViewsStorageKey) || '[]'); state.savedViews = Array.isArray(saved) ? saved.filter(view => view && view.id && view.name && view.state) : []; } catch (ignore) { state.savedViews = []; }
@@ -226,6 +228,35 @@
         } catch (error) { errors.push({ index, message: error.message || String(error) }); }
       }
       return { items: results, errors };
+    }
+    if (method === 'duplicateIssue') {
+      const db = getLocal(), [id, expectedVersion, includeSubtasks, operationId] = args, receipts = JSON.parse(localStorage.getItem(localReceiptStorageKey) || '{}');
+      if (receipts[operationId]) return receipts[operationId];
+      const source = db.issues.find(issue => issue.id === id);
+      if (!source) throw new Error('This issue no longer exists. Refresh the project.');
+      if (!expectedVersion || source.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh before duplicating it.');
+      const sources = [source];
+      if (includeSubtasks) {
+        const addChildren = parentId => C.sorted(db.issues.filter(issue => issue.parentId === parentId)).forEach(child => { sources.push(child); addChildren(child.id); });
+        addChildren(source.id);
+      }
+      if (sources.length > 100) throw new Error('A duplicate can include at most 100 issues. Duplicate a smaller section of the hierarchy.');
+      const copies = [], idMap = {}, now = new Date().toISOString(), generated = new Set(['id', 'parentId', 'status', 'progress', 'timeSpent', 'completedDate', 'createdAt', 'updatedAt', 'rank']);
+      db.sequence = Math.max(db.sequence, ...db.issues.map(issue => Number(/^PRJ-(\d+)$/.exec(issue.id)?.[1]) || 0));
+      sources.forEach(original => {
+        const issue = C.blank(); C.fields.forEach(field => { if (!generated.has(field.key)) issue[field.key] = original[field.key]; });
+        issue.id = `PRJ-${++db.sequence}`; issue.parentId = original.id === source.id ? source.parentId : (idMap[original.parentId] || original.parentId);
+        issue.taskTypeId = original.taskTypeId || 'algo'; issue.status = 'Backlog'; issue.progress = 0; issue.timeSpent = 0; issue.completedDate = ''; issue.createdAt = now; issue.updatedAt = now;
+        const existing = [...db.issues, ...copies.map(entry => entry.issue)].filter(item => item.parentId === issue.parentId && item.status === issue.status);
+        issue.rank = existing.reduce((max, item) => Math.max(max, Number(item.rank) || 0), 0) + 1000;
+        issue.version = crypto.randomUUID(); idMap[original.id] = issue.id; copies.push({ sourceId: original.id, issue });
+      });
+      const projected = [...db.issues, ...copies.map(entry => entry.issue)];
+      copies.forEach(entry => C.validate(entry.issue, projected));
+      db.issues = projected;
+      const result = { rootId: copies[0].issue.id, items: copies };
+      receipts[operationId] = result; localStorage.setItem(storageKey, JSON.stringify(db)); localStorage.setItem(localReceiptStorageKey, JSON.stringify(receipts));
+      return result;
     }
     if (method === 'updateIssuesBatch') {
       const db = getLocal(), items = args[0] || [], receipts = JSON.parse(localStorage.getItem(localReceiptStorageKey) || '{}');
@@ -572,7 +603,7 @@
   async function undoLastCommand() {
     const entry = state.undoStack.at(-1);
     if (!entry) return;
-    if (state.busy || hasPendingSaves() || dialog.open || $('#bulk-edit-dialog').open || Object.keys(state.drafts).length || state.quickQueue.length || state.bulkDraft || state.bulkEditDraft) { notify('Finish or discard pending edits before undoing.', true); return; }
+    if (state.busy || hasPendingSaves() || dialog.open || $('#bulk-edit-dialog').open || Object.keys(state.drafts).length || state.quickQueue.length || state.bulkDraft || state.bulkEditDraft || state.pendingDuplicate) { notify('Finish or discard pending edits before undoing.', true); return; }
     if (entry.kind === 'bulk') { await undoBulkCommand(entry); return; }
     const current = issueById(entry.id);
     if (!current || current.version !== entry.afterVersion) { notify('This issue changed after the saved action. Refresh before undoing it.', true); return; }
@@ -1112,6 +1143,12 @@
     $('#issue-metadata').innerHTML = id ? `Created ${escape(timestamp(issue.createdAt))}<br>Updated ${escape(timestamp(issue.updatedAt))}${issue.completedDate ? `<br>Completed ${escape(shortDate(issue.completedDate))}` : ''}` : '';
     const children = state.issues.filter(i => i.parentId === id && id);
     $('#child-issues').innerHTML = children.length ? `<h3 class="child-heading">Child issues (${children.length})</h3>${children.map(i => `<button type="button" class="child-link" data-child="${escape(i.id)}">${typeIcon(i.type)}<strong>${escape(i.id)}</strong> ${escape(i.summary)}</button>`).join('')}` : '';
+    $('#duplicate-issue').hidden = !id; $('#duplicate-subtasks').checked = false;
+    const descendantIds = new Set();
+    function countDescendants(parentId) { state.issues.filter(issue => issue.parentId === parentId && !descendantIds.has(issue.id)).forEach(issue => { descendantIds.add(issue.id); countDescendants(issue.id); }); }
+    if (id) countDescendants(id);
+    $('#duplicate-subtasks-option').hidden = !descendantIds.size;
+    $('#duplicate-subtasks-label').textContent = `Also duplicate ${descendantIds.size} descendant ${descendantIds.size === 1 ? 'issue' : 'issues'}`;
     renderComments(id);
     if (formSaveTimer) clearTimeout(formSaveTimer); formSaveTimer = null;
     initialForm = formSnapshot(); setFormSaveStatus(id ? 'Saved' : 'Not saved'); if (!dialog.open) dialog.showModal(); form.elements.summary.focus();
@@ -1121,6 +1158,26 @@
     if (formSnapshot() !== initialForm && !confirm('Discard your unsaved changes?')) return false;
     if (formSaveTimer) clearTimeout(formSaveTimer); formSaveTimer = null;
     dialog.close(); edited = null; formSession++; return true;
+  }
+  async function duplicateOpenIssue() {
+    if (!edited || !dialog.open || state.activeSaves || state.busy) return;
+    const current = issueById(edited.id), error = $('#form-error'), button = $('#duplicate-issue');
+    if (!current || current.version !== edited.version) { notify('This issue changed. Refresh before duplicating it.', true); return; }
+    if (formSnapshot() !== initialForm || formSaveTimer || state.saveQueues[saveQueueKeyFor(current.id)] || state.drafts[draftStorageKeyFor(current.id)]) { notify('Save or discard the current edits before duplicating this issue.', true); return; }
+    const includeSubtasks = $('#duplicate-subtasks').checked;
+    const fingerprint = JSON.stringify({ id: current.id, version: current.version, includeSubtasks });
+    if (!state.pendingDuplicate || state.pendingDuplicate.fingerprint !== fingerprint) state.pendingDuplicate = { fingerprint, operationId: newOperationId() };
+    localStorage.setItem(duplicateDraftStorageKey, JSON.stringify(state.pendingDuplicate));
+    button.disabled = true; error.hidden = true; $('#form-save-status').textContent = 'Duplicating…'; state.activeSaves++; setBusy(true); syncText('Duplicating issue…');
+    try {
+      const result = await rpc('duplicateIssue', current.id, current.version, includeSubtasks, state.pendingDuplicate.operationId);
+      const copies = (result.items || []).map(entry => entry.issue);
+      state.issues = [...state.issues, ...copies]; state.pendingDuplicate = null; localStorage.removeItem(duplicateDraftStorageKey);
+      dialog.close(); edited = null; formSession++; setBusy(false); render(); openIssue(result.rootId);
+      notify(`Duplicated ${copies.length} ${copies.length === 1 ? 'issue' : 'issues'}`);
+    } catch (failure) {
+      error.textContent = `${failure.message || String(failure)} Retry to safely check the same duplicate operation.`; error.hidden = false; $('#form-save-status').textContent = 'Duplicate status unknown';
+    } finally { state.activeSaves = Math.max(0, state.activeSaves - 1); setBusy(false); button.disabled = false; syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); }
   }
   async function autosaveForm() {
     formSaveTimer = null;
@@ -1232,6 +1289,7 @@
     const a = document.createElement('a'); a.href = url; a.download = `sheetflow-issues-${today()}.csv`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('#close-dialog').addEventListener('click', closeIssue); $('#cancel-dialog').addEventListener('click', closeIssue);
+  $('#duplicate-issue').addEventListener('click', duplicateOpenIssue);
   dialog.addEventListener('cancel', event => { event.preventDefault(); closeIssue(); });
   form.addEventListener('submit', saveForm);
   form.elements.type.addEventListener('change', () => {

@@ -81,7 +81,8 @@ Only the title is required when creating a task. Other fields receive configured
 - Support keyboard navigation and shortcuts.
 - Support pasting multiple lines to create multiple tasks.
 - Support bulk changes to status, assignee, priority, epic, task type, and dates.
-- Support task duplication and reusable templates.
+- Allow duplication of an issue, optionally including all descendants. Copies receive new IDs and timestamps, start in Backlog with progress/time spent/completion reset, and do not inherit claims or result evidence.
+- Support reusable templates.
 - Provide undo for supported edits, moves, and scheduling changes.
 - Avoid unnecessary confirmation dialogs for routine edits.
 

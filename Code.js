@@ -172,6 +172,75 @@ function updateIssuesBatch(items) {
     return { items: results, errors: [] };
   });
 }
+/** Duplicate one issue and optionally its complete descendant tree. */
+function duplicateIssue(id, expectedVersion, includeSubtasks, operationId) {
+  return withLock_(function () {
+    authorizationService_().require('write');
+    operationId = String(operationId || '');
+    if (!operationId) throw new Error('A duplicate operation ID is required.');
+    var book = getBook_(), history = historyService_(), previousReceipt = history.findReceipt(book, operationId);
+    if (previousReceipt) return previousReceipt.result;
+    var issues = readIssues_(book), source = issues.find(function (issue) { return issue.id === id; });
+    if (!source) throw new Error('This issue no longer exists. Refresh the project.');
+    if (!expectedVersion || source.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh before duplicating it.');
+    var sources = [source];
+    if (includeSubtasks) {
+      function collectChildren(parentId) {
+        TrackerCore.sorted(issues.filter(function (issue) { return issue.parentId === parentId; })).forEach(function (child) { sources.push(child); collectChildren(child.id); });
+      }
+      collectChildren(source.id);
+    }
+    if (sources.length > 100) throw new Error('A duplicate can include at most 100 issues. Duplicate a smaller section of the hierarchy.');
+    var copies = [], idMap = {}, now = new Date().toISOString(), generated = ['id', 'parentId', 'status', 'progress', 'timeSpent', 'completedDate', 'createdAt', 'updatedAt', 'rank'];
+    sources.forEach(function (original) {
+      var copy = TrackerCore.blank();
+      TrackerCore.fields.forEach(function (field) { if (generated.indexOf(field.key) < 0) copy[field.key] = original[field.key]; });
+      copy.id = nextId_(issues.concat(copies.map(function (entry) { return entry.issue; })));
+      copy.parentId = original.id === source.id ? source.parentId : (idMap[original.parentId] || original.parentId);
+      copy.taskTypeId = original.taskTypeId || 'algo'; copy.status = 'Backlog'; copy.progress = 0; copy.timeSpent = 0; copy.completedDate = '';
+      copy.createdAt = now; copy.updatedAt = now;
+      var all = issues.concat(copies.map(function (entry) { return entry.issue; }));
+      var lastRank = all.filter(function (issue) { return issue.parentId === copy.parentId && issue.status === copy.status; }).reduce(function (max, issue) { return Math.max(max, Number(issue.rank) || 0); }, 0);
+      copy.rank = lastRank + 1000;
+      idMap[original.id] = copy.id; copies.push({ sourceId: original.id, issue: copy });
+    });
+    var projected = issues.concat(copies.map(function (entry) { return entry.issue; })), errors = [];
+    copies.forEach(function (entry) { try { TrackerCore.validate(entry.issue, projected); } catch (error) { errors.push(entry.sourceId + ': ' + (error && error.message ? error.message : String(error))); } });
+    if (errors.length) throw new Error('This hierarchy cannot be duplicated: ' + errors.join(' '));
+    var versioned = versionedRepositoryActive_(book), written = [];
+    try {
+      copies.forEach(function (entry) {
+        writeIssue_(book, entry.issue, null); written.push(entry);
+        if (!versioned && typeof SheetFlowSettings !== 'undefined') SheetFlowSettings.setTaskType(book, entry.issue.id, entry.issue.taskTypeId);
+      });
+      SpreadsheetApp.flush();
+    } catch (writeError) {
+      var rollbackErrors = [];
+      if (versioned) {
+        written.forEach(function (entry) {
+          try { var saved = readVersionedIssues_(book, true).find(function (issue) { return issue.id === entry.issue.id; }); if (saved) archiveVersionedIssue_(book, saved); }
+          catch (rollbackError) { rollbackErrors.push(rollbackError && rollbackError.message ? rollbackError.message : String(rollbackError)); }
+        });
+      } else {
+        try {
+          var legacySheet = book.getSheetByName('Issues'), copiedIds = new Set(written.map(function (entry) { return entry.issue.id; }));
+          readIssues_(book).filter(function (issue) { return copiedIds.has(issue.id); }).sort(function (a, b) { return b._row - a._row; }).forEach(function (issue) { legacySheet.deleteRow(issue._row); });
+        } catch (rollbackError) { rollbackErrors.push(rollbackError && rollbackError.message ? rollbackError.message : String(rollbackError)); }
+      }
+      SpreadsheetApp.flush();
+      throw new Error('Duplicate save failed. ' + (rollbackErrors.length ? 'Some copies could not be removed; refresh and review the project. ' : 'Written copies were rolled back. ') + (writeError && writeError.message ? writeError.message : String(writeError)));
+    }
+    var savedIssues = versioned ? readVersionedIssues_(book, false) : readIssues_(book);
+    var results = copies.map(function (entry) {
+      var saved = savedIssues.find(function (issue) { return issue.id === entry.issue.id; });
+      history.record(book, { operationId: operationId + ':' + entry.sourceId, entityId: saved.id, eventKind: 'created', beforeRevision: '', afterRevision: saved.version, changedFields: TrackerCore.fields.map(function (field) { return field.key; }).concat(['taskTypeId']), details: { source: 'app', duplicateOf: entry.sourceId, operationId: operationId } });
+      return { sourceId: entry.sourceId, issue: saved };
+    });
+    var result = { rootId: results[0].issue.id, items: results };
+    history.receipt(book, operationId, result);
+    return result;
+  });
+}
 function saveIssueLocked_(book, input, expectedVersion) {
   var operationId = input && input.operationId, history = historyService_();
   var previousReceipt = history.findReceipt(book, operationId);

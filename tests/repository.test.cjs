@@ -156,3 +156,17 @@ test('bounded bulk updates write every selected record through the active versio
   assert.equal(issues.find(issue => issue.id === task.id).priority, 'Highest');
   assert.equal(issues.find(issue => issue.id === task.id).parentId, epic.id);
 });
+
+test('issue duplication preserves hierarchy through the active versioned repository', () => {
+  const h = harness();
+  addRecord(h.tabs['Projects and Epics'], { ID: 'PROJECT-1', 'Entity Kind': 'Project', Title: 'Project', Order: 1, Active: true, Revision: 1 });
+  const epic = h.api.saveIssue({ summary: 'Epic', type: 'Epic' });
+  const story = h.api.saveIssue({ summary: 'Story', type: 'Story', parentId: epic.id });
+  h.api.saveIssue({ summary: 'Task', parentId: story.id });
+  const result = h.api.duplicateIssue(epic.id, epic.version, true, 'v2-duplicate-1');
+  const issues = h.api.getProject().issues;
+  assert.equal(result.items.length, 3);
+  assert.equal(issues.find(issue => issue.id === result.items[1].issue.id).parentId, result.rootId);
+  assert.equal(issues.find(issue => issue.id === result.items[2].issue.id).parentId, result.items[1].issue.id);
+  assert.equal(issues.filter(issue => issue.type === 'Epic').length, 2);
+});

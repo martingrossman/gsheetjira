@@ -147,6 +147,24 @@ test('a storage failure during bulk save restores already-written issue rows', (
   assert.equal(h.api.getProject().issues.find(issue => issue.id === second.id).priority, 'Medium');
   assert.ok(h.balanced());
 });
+test('issue duplication resets workflow data, remaps descendants, and retries without duplicates', () => {
+  const h = harness(), receipts = new Map(), historyEvents = [];
+  h.api.SheetFlowHistory = {
+    findReceipt: (_, operationId) => operationId && receipts.has(operationId) ? { result: receipts.get(operationId) } : null,
+    record: (_, event) => historyEvents.push(event), receipt: (_, operationId, result) => { if (operationId) receipts.set(operationId, result); }
+  };
+  const epic = h.api.saveIssue({ summary: 'Epic', type: 'Epic' });
+  const story = h.api.saveIssue({ summary: 'Story', type: 'Story', parentId: epic.id, status: 'In Progress', estimate: 8 });
+  const task = h.api.saveIssue({ summary: 'Completed child', parentId: story.id, status: 'Done', progress: 100, timeSpent: 5 });
+  const result = h.api.duplicateIssue(story.id, story.version, true, 'duplicate-1');
+  assert.equal(result.items.length, 2);
+  const copiedStory = result.items[0].issue, copiedTask = result.items[1].issue;
+  assert.equal(copiedStory.type, 'Story'); assert.equal(copiedStory.parentId, epic.id); assert.equal(copiedStory.status, 'Backlog'); assert.equal(copiedStory.estimate, 8);
+  assert.equal(copiedTask.parentId, copiedStory.id); assert.equal(copiedTask.status, 'Backlog'); assert.equal(copiedTask.progress, 0); assert.equal(copiedTask.timeSpent, 0); assert.equal(copiedTask.completedDate, '');
+  assert.ok(copiedStory.id !== story.id && copiedTask.id !== task.id); assert.equal(historyEvents.filter(event => event.details?.duplicateOf).length, 2);
+  const retry = h.api.duplicateIssue(story.id, story.version, true, 'duplicate-1');
+  assert.equal(retry.rootId, result.rootId); assert.equal(h.api.getProject().issues.length, 5);
+});
 test('content versions detect direct sheet edits even without an edit trigger', () => {
   const h = harness(), issue = h.api.saveIssue({ summary: 'Original' });
   h.rows[1][3] = 'Changed in Sheets';
