@@ -43,10 +43,18 @@ For every small work item:
 1. **Inspect** source and existing tests; state actual behavior, risks, and affected files.
 2. **Plan** a reviewable change with explicit acceptance criteria and scope exclusions.
 3. **Implement** only the agreed slice. Prefer direct, coherent code over speculative abstractions.
-4. **Verify** with `npm run check`, relevant interaction tests and real-browser checks where available. Test both modes when the change touches persistence or build/runtime differences. If the environment cannot run a test, report that plainly; do not claim it passed.
+4. **Verify** with `npm run check` and relevant interaction tests where available, preferably run locally by the user to conserve Codex usage. Test both modes when the change touches persistence or build/runtime differences. If the environment cannot run a test, report that plainly; do not claim it passed.
 5. **Report** changes, screenshots/measurements when useful, regressions checked, current limitations and next slice. Do not mark an item done on visual plausibility alone.
 
 Do not bundle visual redesign, data migration, backend write-path refactor and new features into one unreviewable change.
+
+## Codex-efficient Playwright policy
+
+- Prefer local, human-run Playwright execution in VS Code PowerShell. Codex writes/maintains tests and diagnoses failures; do **not** launch full browser suites, interactive browser sessions, or repeated screenshot/trace inspections unless explicitly requested.
+- After each small change, specify the exact targeted test command for the user to run. The user shares only failing test names, concise errors and selected diagnostics; do not ingest complete successful logs, HTML reports or trace archives into model context.
+- Preserve existing Playwright projects, tests and configuration. Do not add dependencies or modify test infrastructure without approval. Recommend concise console + HTML reporting, failure-only screenshots/traces and video disabled, but verify the current config before changing it.
+- Local test execution is not equivalent to testing the Google Sheets/Apps Script mode. Record what was and was not verified.
+- See `TESTING.md` for local commands and the manual test/fix loop.
 
 ## UX quality rules
 
