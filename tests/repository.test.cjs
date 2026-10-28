@@ -35,7 +35,7 @@ function harness() {
   const context = vm.createContext({
     Date, console: { log: (...args) => logs.push(args.join(' ')) }, TrackerCore: Core,
     SpreadsheetApp: { openById: () => book, flush() {} },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: key => properties.get(key) || '', setProperty: (key, value) => properties.set(key, String(value)) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: key => properties.get(key) || '', getProperties: () => Object.fromEntries(properties), setProperty: (key, value) => properties.set(key, String(value)) }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     Utilities: {
       getUuid: () => crypto.randomUUID(),
@@ -391,13 +391,14 @@ function personalBatchHarness() {
   const h=harness(); loadBrowserServices(h);
   vm.runInContext(fs.readFileSync(require.resolve('../Environment.js'),'utf8'),h.api);
   h.properties.set('SHEETFLOW_MODE','personal');
-  const calls=[]; let failBefore=false,lostAfter=false;
+  const calls=[],batchReads=[]; let failBefore=false,lostAfter=false,splitResponse=false;
   const sheets=Object.values(h.tabs);
   sheets.forEach((sheet,index)=> { sheet.getSheetId=()=>index; });
   const originalFormat=h.api.Utilities.formatDate;
   h.api.Utilities.formatDate=(date,zone,format)=>format==="yyyy-MM-dd'T'HH:mm:ss.SSS" ? date.toISOString().slice(0,-1) : originalFormat(date,zone,format);
   h.api.Utilities.parseDate=value=>new Date(value.length===10 ? value+'T00:00:00Z' : value.endsWith('Z') ? value : value+'Z');
   h.api.Sheets={Spreadsheets:{Values:{batchGet(id,options) {
+    batchReads.push(options);
     assert.equal(id,h.book.getId());assert.equal(options.ranges.length,2);
     return {valueRanges:['Issues','_System'].map(name=>{
       const sheet=h.tabs[name];
@@ -406,7 +407,7 @@ function personalBatchHarness() {
   }},batchUpdate(request,id) {
     calls.push(request); assert.equal(id,h.book.getId());
     if(failBefore) {failBefore=false;throw new Error('Batch rejected');}
-    const responses=[];
+    const taskRows=[];
     for(const entry of request.requests) {
       if(entry.appendDimension || entry.repeatCell) continue;
       const change=entry.updateCells, sheet=sheets[change.start.sheetId],rowIndex=change.start.rowIndex;
@@ -418,13 +419,15 @@ function personalBatchHarness() {
         if(typeof stored==='number' && ['date','timestamp'].includes(kind))stored=new Date(Math.round((stored-25569)*86400000));
         sheet.rows[rowIndex][column]=stored;
       });
-      if(sheet===h.tabs.Issues) responses.push({properties:{sheetId:sheet.getSheetId()},data:[{startRow:rowIndex,rowData:[{values:change.rows[0].values.map(cell=>({effectiveValue:cell.userEnteredValue}))}]}]});
+      if(sheet===h.tabs.Issues) taskRows.push({startRow:rowIndex,rowData:[{values:change.rows[0].values.map(cell=>({effectiveValue:cell.userEnteredValue}))}]});
     }
     if(lostAfter){lostAfter=false;throw new Error('Acknowledgement lost');}
-    return {updatedSpreadsheet:{sheets:responses}};
+    const firstRow=Math.min(...taskRows.map(row=>row.startRow)),lastRow=Math.max(...taskRows.map(row=>row.startRow));
+    const data=splitResponse ? taskRows : [{startRow:firstRow,rowData:Array.from({length:lastRow-firstRow+1},(_,offset)=>taskRows.find(row=>row.startRow===firstRow+offset)?.rowData[0]||{})}];
+    return {updatedSpreadsheet:{sheets:[{properties:{sheetId:h.tabs.Issues.getSheetId()},data}]}};
   }}};
   h.api.SpreadsheetApp.flush=()=>{throw new Error('Batched personal save must not flush SpreadsheetApp');};
-  return {...h,calls,fail:()=>{failBefore=true;},loseAcknowledgement:()=>{lostAfter=true;}};
+  return {...h,calls,batchReads,fail:()=>{failBefore=true;},loseAcknowledgement:()=>{lostAfter=true;},splitResponse:()=>{splitResponse=true;}};
 }
 
 test('personal batch saves native dates and literal text with category and receipt in one request', () => {
@@ -484,7 +487,7 @@ test('personal batched reads detect native edits and header damage on the next s
   assert.equal(h.calls.length,1);
 });
 
-test('personal legacy batch creation uses the standard writer without mixing cached sheets and API writes', () => {
+test('personal legacy batch creation falls back to the standard writer when its batch module is unavailable', () => {
   const h=personalBatchHarness();h.api.SpreadsheetApp.flush=()=>{};
   const result=h.api.createIssuesBatch([
     {operationId:'personal-list-1',input:{summary:'List first'}},
@@ -525,4 +528,108 @@ test('personal metadata refresh follows geometry changes and write failures inva
   assert.equal(entries.size,0);
   const saved=h.api.saveIssue({summary:'Retry after invalidation',operationId:'meta-failed'});
   assert.ok(saved.id);assert.equal(entries.size,1);
+});
+
+function runPersonalCreateBatch(h,items) {
+  vm.runInContext(fs.readFileSync(require.resolve('../PersonalBatch.js'),'utf8'),h.api);
+  const request=h.api.saveRequestContext_(),book=h.api.readPersonalSaveBook_(request.config);
+  return h.api.createPersonalIssuesBatch_(book,items,request);
+}
+
+test('personal create batch reads once and atomically writes accepted items with distinct rows and receipts', () => {
+  const h=personalBatchHarness();
+  const epic=h.api.saveIssue({summary:'Parent Epic',type:'Epic',operationId:'batch-epic'});
+  h.calls.length=0;h.batchReads.length=0;
+  const getProperties=h.api.PropertiesService.getScriptProperties;let reservations=0;
+  h.api.PropertiesService.getScriptProperties=()=>{
+    const props=getProperties();return {...props,setProperty(key,value){if(key==='LAST_ISSUE_NUMBER')reservations++;return props.setProperty(key,value);}};
+  };
+  const result=runPersonalCreateBatch(h,[
+    {operationId:'batch-story',input:{summary:'New Story',type:'Story',parentId:epic.id,taskTypeId:'data'}},
+    {operationId:'batch-invalid',input:{summary:'',parentId:epic.id}},
+    {operationId:'batch-task',input:{summary:'New Task',parentId:epic.id,taskTypeId:'bug'}},
+    {operationId:'batch-story',input:{summary:'Duplicate operation'}},
+    {operationId:'batch-edit',input:{id:epic.id,summary:'Not a create'}}
+  ]);
+  assert.equal(h.batchReads.length,1);assert.equal(h.calls.length,1);assert.equal(reservations,1);
+  assert.deepEqual(Array.from(result.items,item=>item.index),[0,2]);
+  assert.deepEqual(Array.from(result.errors,error=>error.index),[1,3,4]);
+  assert.deepEqual(Array.from(result.items,item=>item.issue.id),['PRJ-2','PRJ-4']);
+  const project=h.api.getProject();assert.equal(project.issues.length,3);
+  for(const item of result.items) {
+    const stored=project.issues.find(issue=>issue.id===item.issue.id);
+    assert.equal(stored.version,item.issue.version);assert.equal(stored.parentId,epic.id);
+    assert.equal(h.api.SheetFlowHistory.findReceipt(h.book,item.index===0?'batch-story':'batch-task').result.id,item.issue.id);
+  }
+  assert.equal(project.issues.find(issue=>issue.id==='PRJ-2').taskTypeId,'data');
+  assert.equal(project.issues.find(issue=>issue.id==='PRJ-4').taskTypeId,'bug');
+  assert.equal(h.properties.get('LAST_ISSUE_NUMBER'),'4');
+  assert.equal(h.tabs['Change History'].rows.length,1);
+});
+
+test('personal create batch replays every accepted item after a lost acknowledgement without rewriting', () => {
+  const h=personalBatchHarness(),items=[1,2].map(n=>({operationId:`lost-batch-${n}`,input:{summary:`Task ${n}`}}));
+  h.loseAcknowledgement();
+  assert.throws(()=>runPersonalCreateBatch(h,items),/Acknowledgement lost/);
+  assert.equal(h.calls.length,1);assert.equal(h.tabs.Issues.rows.length,3);
+  const replay=runPersonalCreateBatch(h,items);
+  assert.equal(replay.errors.length,0);assert.equal(replay.items.length,2);assert.equal(h.calls.length,1);
+  assert.deepEqual(Array.from(replay.items,item=>item.issue.id),['PRJ-1','PRJ-2']);
+  const mixed=runPersonalCreateBatch(h,[items[0],{operationId:'mixed-new',input:{summary:'Third task'}}]);
+  assert.deepEqual(Array.from(mixed.items,item=>item.issue.id),['PRJ-1','PRJ-3']);
+  assert.equal(h.calls.length,2);assert.equal(h.api.getProject().issues.length,3);
+});
+
+test('a rejected personal create batch leaves all task and receipt rows unwritten and never reuses reserved IDs', () => {
+  const h=personalBatchHarness(),items=[1,2].map(n=>({operationId:`rejected-batch-${n}`,input:{summary:`Task ${n}`}}));
+  h.fail();assert.throws(()=>runPersonalCreateBatch(h,items),/Batch rejected/);
+  assert.equal(h.tabs.Issues.rows.length,1);
+  assert.equal(h.api.SheetFlowHistory.findReceipt(h.book,items[0].operationId),null);
+  assert.equal(h.api.SheetFlowHistory.findReceipt(h.book,items[1].operationId),null);
+  const retry=runPersonalCreateBatch(h,items);
+  assert.deepEqual(Array.from(retry.items,item=>item.issue.id),['PRJ-3','PRJ-4']);
+  assert.equal(h.calls.length,2);assert.equal(h.api.getProject().issues.length,2);
+});
+
+test('personal batch verifies written rows across separate GridData segments and expands each grid only once', () => {
+  const h=personalBatchHarness();h.splitResponse();
+  const entries=new Map();
+  h.api.CacheService={getScriptCache:()=>({get:key=>entries.get(key)||null,put:(key,value)=>entries.set(key,value),remove:key=>entries.delete(key)})};
+  h.tabs.Issues.getMaxRows=()=>1;h.tabs._System.getMaxRows=()=>2;
+  const result=runPersonalCreateBatch(h,[1,2,3].map(n=>({operationId:`segmented-${n}`,input:{summary:`Task ${n}`,taskTypeId:'data'}})));
+  assert.equal(result.items.length,3);assert.equal(h.calls.length,1);
+  const growth=h.calls[0].requests.filter(request=>request.appendDimension);
+  assert.equal(growth.filter(request=>request.appendDimension.sheetId===h.tabs.Issues.getSheetId()).length,1);
+  assert.equal(growth.filter(request=>request.appendDimension.sheetId===h.tabs._System.getSheetId()).length,1);
+  assert.equal(entries.size,0,'grid growth invalidates cached capacities before the next request');
+  assert.equal(new Set(h.tabs._System.rows.filter(row=>String(row[0]).startsWith('IDEMPOTENCY:')).map(row=>row[0])).size,3);
+});
+
+test('public personal batch dispatch uses one API write and advertises support only for the personal legacy path', () => {
+  const h=personalBatchHarness();
+  vm.runInContext(fs.readFileSync(require.resolve('../PersonalBatch.js'),'utf8'),h.api);
+  const result=h.api.createIssuesBatch([1,2].map(n=>({operationId:`public-personal-${n}`,input:{summary:`Public task ${n}`}})));
+  assert.equal(result.items.length,2);assert.equal(result.errors.length,0);
+  assert.equal(h.batchReads.length,1);assert.equal(h.calls.length,1);
+  assert.equal(h.api.getProject().quickBatchCreate,true);
+  h.properties.set('SHEETFLOW_MODE','team');h.api.SpreadsheetApp.flush=()=>{};
+  const team=h.api.createIssuesBatch([{operationId:'team-fallback',input:{summary:'Team task'}}]);
+  assert.equal(team.items.length,1);assert.equal(h.calls.length,1);
+  assert.equal(h.api.getProject().quickBatchCreate,false);
+});
+
+test('personal save uses one fresh property snapshot including authorization and observes enforcement changes', () => {
+  const h=personalBatchHarness();
+  vm.runInContext(fs.readFileSync(require.resolve('../Authorization.js'),'utf8'),h.api);
+  h.api.Session={getActiveUser:()=>({getEmail:()=> 'viewer@example.com'})};
+  let snapshots=0,propertyReads=0;
+  const getProperties=h.api.PropertiesService.getScriptProperties;
+  h.api.PropertiesService.getScriptProperties=()=>{
+    const props=getProperties();return {...props,getProperties(){snapshots++;return props.getProperties();},getProperty(key){propertyReads++;return props.getProperty(key);}};
+  };
+  h.api.saveIssue({summary:'One property snapshot',operationId:'single-snapshot'});
+  assert.equal(snapshots,1);assert.equal(propertyReads,0);
+  h.properties.set('SHEETFLOW_AUTH_ENFORCED','true');h.properties.set('SHEETFLOW_ROLE_viewer@example.com','viewer');
+  assert.throws(()=>h.api.saveIssue({summary:'Forbidden next request',operationId:'enforced-next'}),/AUTH_FORBIDDEN/);
+  assert.equal(snapshots,2);assert.equal(propertyReads,0);
 });

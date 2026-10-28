@@ -345,6 +345,7 @@ Backlog → Ready → In Progress → Review → Done
 - Support an explicit personal mode for owner-only deployments: manual refresh, comments loaded when an issue opens, and detailed change logging disabled. Preserve existing history and allow switching back to team mode.
 - In personal mode, skip custom role resolution only when server role enforcement is disabled. Keep Google deployment access control, validation, conflict detection, write locking, and duplicate-retry protection.
 - Batch ordinary personal legacy task writes and retry receipts together. Keep team mode as the default for unconfigured deployments; richer team/agent history and permissions remain required in team mode.
+- Start the first quick-create save immediately. When independent entries accumulate, group waiting creates into bounded background requests while preserving each item's operation ID, validation errors, retry/reload recovery and accurate saving status. Read mutable task/receipt data fresh under the write lock and commit accepted creates with their receipts together.
 
 - Prioritize fast task creation and inline editing.
 - Load shared task data once and reuse it across views.

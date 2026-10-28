@@ -25,7 +25,7 @@ function harness() {
   const book = { getSheetByName: () => sheet, getId: () => 'book-1', getUrl: () => 'https://docs.google.com/spreadsheets/d/book-1/edit', getName: () => 'Project', getSpreadsheetTimeZone: () => 'Europe/Prague' };
   const context = vm.createContext({ Date, console: { log: (...args) => logs.push(args.join(' ')) }, TrackerCore: C,
     SpreadsheetApp: { openById: () => book, flush: () => {} },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: key => props.get(key), setProperty: (key, value) => props.set(key, value) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: key => props.get(key), getProperties: () => Object.fromEntries(props), setProperty: (key, value) => props.set(key, value) }) },
     LockService: { getScriptLock: () => ({ waitLock: () => locks++, releaseLock: () => releases++ }) },
     Utilities: {
       formatDate: (date, zone, format) => format === 'yyyy-MM-dd' ? date.toLocaleDateString('en-CA', { timeZone: zone }) : date.toISOString(),
@@ -317,4 +317,20 @@ test('single-row verification detects structural edits and leaves failed save ti
   assert.ok(h.balanced());
   const timing=JSON.parse(h.logs.at(-1).slice('SheetFlow save timing '.length));
   assert.equal(timing.outcome,'failed');assert.ok(Number.isFinite(timing.totalServerMs));
+});
+
+test('ordinary legacy saves hash only the edited issue and their returned row', () => {
+  const h=harness();
+  for(let n=0;n<6;n++)h.api.saveIssue({summary:'Existing '+n});
+  const digest=h.api.Utilities.computeDigest;let hashes=0;
+  h.api.Utilities.computeDigest=(...args)=>{hashes++;return digest(...args);};
+  const created=h.api.saveIssue({summary:'New task among existing work'});
+  assert.equal(hashes,1,'create hashes only the saved row');
+  hashes=0;
+  const updated=h.api.saveIssue({id:created.id,summary:'Updated task'},created.version);
+  assert.equal(hashes,2,'edit checks the current version and hashes the saved row');
+  hashes=0;
+  const project=h.api.getProject();
+  assert.equal(hashes,7,'project responses still provide all versions');
+  assert.equal(project.issues.find(issue=>issue.id===created.id).version,updated.version);
 });

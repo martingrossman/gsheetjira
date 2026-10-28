@@ -3,14 +3,14 @@ var SheetFlowEnvironment = (function () {
   'use strict';
   var names = ['development', 'test', 'production'];
   function properties() { return PropertiesService.getScriptProperties(); }
-  function currentName() {
-    var value = String(properties().getProperty('SHEETFLOW_ENV') || 'development').toLowerCase();
+  function currentName(snapshot) {
+    var value = String((snapshot ? snapshot.SHEETFLOW_ENV : properties().getProperty('SHEETFLOW_ENV')) || 'development').toLowerCase();
     return names.indexOf(value) >= 0 ? value : 'development';
   }
   function key(name) { return 'SHEETFLOW_SPREADSHEET_ID_' + String(name).toUpperCase(); }
-  function spreadsheetId(name) {
-    var selected = name || currentName();
-    return properties().getProperty(key(selected)) || properties().getProperty('SPREADSHEET_ID') || '';
+  function spreadsheetId(name, snapshot) {
+    var selected = name || currentName(snapshot);
+    return snapshot ? snapshot[key(selected)] || snapshot.SPREADSHEET_ID || '' : properties().getProperty(key(selected)) || properties().getProperty('SPREADSHEET_ID') || '';
   }
   function configure(name, id) {
     name = String(name || '').toLowerCase();

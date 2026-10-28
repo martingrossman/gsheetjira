@@ -7,6 +7,7 @@ const read = name => readFile(path.join(root, name), 'utf8');
 const core = await read('Core.js');
 new vm.Script(core, { filename: 'Core.js' });
 new vm.Script(await read('Code.js'), { filename: 'Code.js' });
+new vm.Script(await read('PersonalBatch.js'), { filename: 'PersonalBatch.js' });
 new vm.Script(await read('Schema.js'), { filename: 'Schema.js' });
 new vm.Script(await read('Migrations.js'), { filename: 'Migrations.js' });
 new vm.Script(await read('Environment.js'), { filename: 'Environment.js' });

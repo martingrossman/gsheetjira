@@ -17,3 +17,16 @@ test('repository property names follow fresh environment selection without loadi
   properties.set('SHEETFLOW_ENV', 'invalid');
   assert.equal(context.repositoryPropertyKey_('SHEETFLOW_ACTIVE_SCHEMA'), 'SHEETFLOW_ACTIVE_SCHEMA_DEVELOPMENT');
 });
+
+test('a save context keeps workbook and repository selection consistent if configuration changes', () => {
+  const C=require('../Core.js'),properties=new Map([['SHEETFLOW_ENV','test'],['SHEETFLOW_SPREADSHEET_ID_TEST','book-test'],['SHEETFLOW_SPREADSHEET_ID_PRODUCTION','book-production'],['SHEETFLOW_ACTIVE_SCHEMA_TEST','2']]),opened=[];
+  const store={getProperty:key=>properties.get(key)||'',getProperties:()=>Object.fromEntries(properties)};
+  const context=vm.createContext({TrackerCore:C,PropertiesService:{getScriptProperties:()=>store},SpreadsheetApp:{openById:id=>{opened.push(id);return {getSheetByName:()=>({getRange:()=>({getValues:()=>[C.fields.map(field=>field.label)]})})};}}});
+  for(const file of ['Environment.js','Code.js'])vm.runInContext(fs.readFileSync(require.resolve('../'+file),'utf8'),context);
+  const request=context.saveRequestContext_();
+  properties.set('SHEETFLOW_ENV','production');
+  context.getBook_(request.config);
+  assert.equal(context.getRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA',request.config),'2');
+  context.getBook_();
+  assert.deepEqual(opened,['book-test','book-production']);
+});

@@ -26,7 +26,7 @@ function harness(sourceIssues) {
   const context = vm.createContext({
     Date, console, TrackerCore: Core,
     SpreadsheetApp: { openById: id => { assert.equal(id, 'test-book'); return book; }, flush() {} },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: key => properties.get(key) || '', setProperty: (key, value) => properties.set(key, String(value)), deleteProperty: key => properties.delete(key) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: key => properties.get(key) || '', getProperties: () => Object.fromEntries(properties), setProperty: (key, value) => properties.set(key, String(value)), deleteProperty: key => properties.delete(key) }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     Utilities: {
       formatDate: (date, zone, format) => format === 'yyyy-MM-dd' ? date.toLocaleDateString('en-CA', { timeZone: zone }) : date.toISOString(),

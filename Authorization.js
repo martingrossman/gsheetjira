@@ -28,8 +28,8 @@ var SheetFlowAuth = (function () {
   }
   function actor() { return resolveActor(activeEmail(), PropertiesService.getScriptProperties().getProperties()); }
   function enforced() { return PropertiesService.getScriptProperties().getProperty('SHEETFLOW_AUTH_ENFORCED') === 'true'; }
-  function requireCapability(capability) {
-    var props = PropertiesService.getScriptProperties().getProperties();
+  function requireCapability(capability, snapshot) {
+    var props = snapshot || PropertiesService.getScriptProperties().getProperties();
     if (props.SHEETFLOW_MODE === 'personal' && props.SHEETFLOW_AUTH_ENFORCED !== 'true') {
       return { id: 'owner-session', email: '', role: 'administrator', authenticated: false };
     }

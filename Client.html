@@ -371,11 +371,47 @@
   function hasPendingSaves() { return state.activeSaves > 0 || Object.keys(state.saveQueues).length > 0; }
   function drainQuickQueue() {
     if (state.busy || hasPendingSaves() || !state.quickQueue.length) return;
+    if (isCloud && state.quickBatchCreate && state.quickQueue.length > 1) { drainQuickBatch().catch(showError); return; }
     const next = state.quickQueue.shift(), input = document.createElement('input');
     localStorage.setItem(quickQueueStorageKey, JSON.stringify(state.quickQueue));
     input.value = next.title; input.dataset.quickKind = next.kind; input.dataset.quickParentId = next.parentId || '';
-    input.dataset.quickDraftKey = next.draftKey;
+    input.dataset.quickDraftKey = next.draftKey; input.dataset.quickOperationId = next.operationId || next.draftKey;
     createQuickTask(next.status, input);
+  }
+  async function drainQuickBatch() {
+    const queued = state.quickQueue.slice(0, 20);
+    const entries = queued.map(item => {
+      const previous = state.drafts[item.draftKey];
+      const operationId = previous?.operationId || item.operationId || item.draftKey;
+      const input = previous?.input || { summary: item.title, type: item.kind, taskTypeId: defaultTaskTypeId(), status: item.status, priority: 'Medium', parentId: item.parentId || '', _draftKey: item.draftKey };
+      saveDraft(input, previous?.version, operationId);
+      return { key: item.draftKey, input: { ...input, operationId }, operationId };
+    });
+    // Persist the retry drafts before removing queued entries; a reload can safely replay duplicates by operation ID.
+    state.quickQueue.splice(0, entries.length);
+    localStorage.setItem(quickQueueStorageKey, JSON.stringify(state.quickQueue));
+    entries.forEach(entry => quickSavesInFlight.add(entry.key));
+    state.activeSaves++; syncText('Saving…'); render();
+    try {
+      const response = await rpc('createIssuesBatch', entries.map(entry => ({ input: entry.input, operationId: entry.operationId })));
+      const accepted = new Map((response?.items || []).map(item => [item.index, item.issue]));
+      const errors = new Map((response?.errors || []).map(item => [item.index, item.message]));
+      entries.forEach((entry, index) => {
+        const issue = accepted.get(index);
+        if (issue?.id && issue.version) {
+          state.issues = state.issues.some(old => old.id === issue.id) ? state.issues.map(old => old.id === issue.id ? issue : old) : [...state.issues, issue];
+          clearDraft(entry.key);
+        } else if (state.drafts[entry.key]) state.drafts[entry.key].error = errors.get(index) || 'Save is unconfirmed. Retry to check safely.';
+      });
+      localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
+    } catch (error) {
+      entries.forEach(entry => { if (state.drafts[entry.key]) state.drafts[entry.key].error = error.message || String(error); });
+      localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
+    } finally {
+      entries.forEach(entry => quickSavesInFlight.delete(entry.key));
+      state.activeSaves = Math.max(0, state.activeSaves - 1);
+      render(); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); queueMicrotask(drainQuickQueue);
+    }
   }
   function bulkTitles() { return $('#bulk-create-input').value.split(/\r?\n/).map(title => title.trim()).filter(Boolean); }
   function renderBulkPreview() {
@@ -553,7 +589,7 @@
     try {
       const project = await rpc('getProject');
       if (!project || !Array.isArray(project.issues)) throw new Error('The server returned no valid project data. Reload the latest tracker deployment. If this continues, run startupHealthCheck in Apps Script.');
-      state.issues = project.issues.map(withDraft); state.comments = project.comments || {}; state.commentsLazy = project.commentsLazy === true; state.mode = project.mode || 'team'; state.settings = project.settings || []; state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
+      state.issues = project.issues.map(withDraft); state.comments = project.comments || {}; state.commentsLazy = project.commentsLazy === true; state.mode = project.mode || 'team'; state.quickBatchCreate = project.quickBatchCreate === true; state.settings = project.settings || []; state.spreadsheetUrl = project.spreadsheetUrl; state.ready = true;
       $('#error-banner').hidden = true;
       $('#connection-title').textContent = isCloud ? 'Connected to Google Sheets' : 'Browser demo';
       $('#connection-detail').textContent = isCloud ? 'Shared data. Three ways to work.' : 'Sample data saved on this browser.';
@@ -638,12 +674,13 @@
     const input = sourceInput || $('#quick-title'), title = input.value.trim(), kind = input.dataset.quickKind || 'Task', parentId = kind === 'Epic' ? '' : (input.dataset.quickParentId || '');
     if (!title || !state.ready) return;
     const quickDraftKey = input.dataset.quickDraftKey || `quick-${newOperationId()}`;
-    input.value = ''; delete input.dataset.quickDraftKey;
+    const operationId = state.drafts[quickDraftKey]?.operationId || input.dataset.quickOperationId || quickDraftKey;
+    input.value = ''; delete input.dataset.quickDraftKey; delete input.dataset.quickOperationId;
     if (state.busy || hasPendingSaves()) {
-      state.quickQueue.push({ title, status, kind, parentId, draftKey: quickDraftKey });
+      state.quickQueue.push({ title, status, kind, parentId, draftKey: quickDraftKey, operationId });
       localStorage.setItem(quickQueueStorageKey, JSON.stringify(state.quickQueue)); render(); syncText('Work item queued…'); return;
     }
-    try { await persist({ summary: title, type: kind, taskTypeId: defaultTaskTypeId(), status, priority: 'Medium', parentId, _draftKey: quickDraftKey }, undefined, `${kind} added`); }
+    try { await persist({ summary: title, type: kind, taskTypeId: defaultTaskTypeId(), status, priority: 'Medium', parentId, _draftKey: quickDraftKey, operationId }, undefined, `${kind} added`); }
     catch (ignore) {}
     finally { drainQuickQueue(); }
   }
@@ -855,7 +892,7 @@
     const firstRank = state.issues.reduce((max, issue) => Math.max(max, Number(issue.rank) || 0), 0) + 1000;
     return [
       ...Object.entries(state.drafts).filter(([key, draft]) => key.startsWith('quick-') && !draft.input.id).map(([key, draft]) => ({ id: `pending:${key}`, draftKey: key, summary: draft.input.summary, taskTypeId: draft.input.taskTypeId, type: draft.input.type, status: draft.input.status, parentId: draft.input.parentId || '', pendingState: draft.error || !quickSavesInFlight.has(key) ? 'failed' : 'saving', error: draft.error || (!quickSavesInFlight.has(key) ? 'Save is unconfirmed. Retry to check safely.' : '') })),
-      ...state.quickQueue.map(item => ({ id: `pending:${item.draftKey}`, draftKey: item.draftKey, summary: item.title, type: item.kind, status: item.status, parentId: item.parentId || '', pendingState: 'queued' }))
+      ...state.quickQueue.filter(item => !state.drafts[item.draftKey]).map(item => ({ id: `pending:${item.draftKey}`, draftKey: item.draftKey, summary: item.title, type: item.kind, status: item.status, parentId: item.parentId || '', pendingState: 'queued' }))
     ].map((issue, index) => ({ ...issue, rank: firstRank + index * 1000 }));
   }
   function pendingQuickCard(issue) {

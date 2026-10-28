@@ -71,7 +71,9 @@ function getProject() {
     var book = getBook_();
     if (typeof trackerMode_ === 'function' && trackerMode_() === 'personal') personalSaveMetadata_(book.getId(), book, true);
     var issues = readIssues_(book);
-    return browserValue_({ issues: issues.map(clientIssue_), comments: {}, commentsLazy: true, mode: typeof trackerMode_ === 'function' ? trackerMode_() : 'team', settings: typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [], spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() });
+    var mode = typeof trackerMode_ === 'function' ? trackerMode_() : 'team';
+    var quickBatchCreate = mode === 'personal' && typeof Sheets !== 'undefined' && typeof createPersonalIssuesBatch_ === 'function' && getRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA') !== '2';
+    return browserValue_({ issues: issues.map(clientIssue_), comments: {}, commentsLazy: true, mode: mode, quickBatchCreate: quickBatchCreate, settings: typeof SheetFlowSettings !== 'undefined' ? SheetFlowSettings.read(book) : [], spreadsheetUrl: book.getUrl(), name: book.getName(), serverTime: new Date().toISOString() });
   });
 }
 /** expectedVersion prevents an old browser tab overwriting a newer row. */
@@ -80,11 +82,11 @@ function saveIssue(input, expectedVersion) {
   try {
     return withLock_(function () {
       timing.lockWaitMs = Date.now() - started;
-      var mark = Date.now(); authorizationService_().require('write'); timing.authorizeMs = Date.now() - mark;
+      var mark = Date.now(), request = saveRequestContext_(); authorizationService_().require('write', request.config); timing.authorizeMs = Date.now() - mark;
       mark = Date.now();
-      var fastRead = input && input.operationId && typeof trackerMode_ === 'function' && trackerMode_() === 'personal' && typeof Sheets !== 'undefined' && getRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA') !== '2';
-      var book = fastRead ? readPersonalSaveBook_() : getBook_(); timing.openBookMs = Date.now() - mark;
-      var result = saveIssueLocked_(book, input, expectedVersion, timing);
+      var fastRead = input && input.operationId && request.config.SHEETFLOW_MODE === 'personal' && typeof Sheets !== 'undefined' && getRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA', request.config) !== '2';
+      var book = fastRead ? readPersonalSaveBook_(request.config) : getBook_(request.config); timing.openBookMs = Date.now() - mark;
+      var result = saveIssueLocked_(book, input, expectedVersion, timing, request);
       timing.outcome = timing.replayed ? 'replayed' : 'saved';
       return result;
     });
@@ -95,16 +97,21 @@ function saveIssue(input, expectedVersion) {
 }
 function createIssuesBatch(items) {
   return withLock_(function () {
-    authorizationService_().require('write');
+    var request = saveRequestContext_(); authorizationService_().require('write', request.config);
     if (!Array.isArray(items) || !items.length || items.length > 100) throw new Error('Submit between 1 and 100 issue titles per batch.');
-    var book = getBook_(), results = [], errors = [], operationIds = new Set();
+    if (request.config.SHEETFLOW_MODE === 'personal' && typeof Sheets !== 'undefined' && typeof createPersonalIssuesBatch_ === 'function' && getRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA', request.config) !== '2' && items.every(function (item) { return item && item.input && !item.input.id; })) {
+      var started = Date.now();
+      try { return createPersonalIssuesBatch_(readPersonalSaveBook_(request.config), items, request); }
+      finally { console.log('SheetFlow batch timing ' + JSON.stringify({ count: items.length, totalServerMs: Date.now() - started, writer: 'sheets-batch' })); }
+    }
+    var book = getBook_(request.config), results = [], errors = [], operationIds = new Set();
     items.forEach(function (item, index) {
       try {
         if (!item || !item.input || typeof item.input !== 'object') throw new Error('Missing issue fields.');
         var input = Object.assign({}, item.input), operationId = String(item.operationId || input.operationId || Utilities.getUuid());
         if (operationIds.has(operationId)) throw new Error('Each batch item needs a unique operation ID.');
         operationIds.add(operationId); input.operationId = operationId;
-        results.push({ index: index, issue: saveIssueLocked_(book, input, item.expectedVersion) });
+        results.push({ index: index, issue: saveIssueLocked_(book, input, item.expectedVersion, undefined, request) });
       } catch (error) { errors.push({ index: index, message: error && error.message ? error.message : String(error) }); }
     });
     return { items: results, errors: errors };
@@ -306,13 +313,17 @@ function undoDuplicateIssues(duplicateOperationId, expectedItems, undoOperationI
     return result;
   });
 }
-function saveIssueLocked_(book, input, expectedVersion, timing) {
+function saveRequestContext_() {
+  var properties = PropertiesService.getScriptProperties();
+  return { properties: properties, config: properties.getProperties() };
+}
+function saveIssueLocked_(book, input, expectedVersion, timing, request) {
   timing = timing || {};
   var mark = Date.now(), systemRows = readSystemRows_(book);
   var operationId = input && input.operationId, history = historyService_();
   var previousReceipt = history.findReceipt(book, operationId, systemRows);
   if (previousReceipt) { timing.replayed = true; timing.readMs = Date.now() - mark; return clientIssue_(previousReceipt.result); }
-  var snapshot = { systemRows: systemRows, versioned: versionedRepositoryActive_(book, systemRows) };
+  var snapshot = { systemRows: systemRows, versioned: versionedRepositoryActive_(book, systemRows, request && request.config), onlyVersionFor: String(input && input.id || '') };
   if (snapshot.versioned) {
     snapshot.tasks = SheetFlowRepository.records(book, 'tasks');
     snapshot.projects = SheetFlowRepository.records(book, 'projects');
@@ -324,7 +335,7 @@ function saveIssueLocked_(book, input, expectedVersion, timing) {
   if (input.id && !current) throw new Error('This issue no longer exists. Refresh the project.');
   if (current && current.version !== expectedVersion) throw new Error('This issue changed elsewhere. Refresh, then apply your changes again.');
   var issue = TrackerCore.prepare(input, current, today_(book), new Date().toISOString());
-  if (!current) issue.id = nextId_(issues);
+  if (!current) issue.id = nextId_(issues, request);
   TrackerCore.validate(issue, issues);
   timing.validateMs = Date.now() - mark;
   if (book._personalSave && !snapshot.versioned && typeof Sheets !== 'undefined' && operationId) {
@@ -350,8 +361,8 @@ function saveIssueLocked_(book, input, expectedVersion, timing) {
   return saved;
 }
 /** One fresh API read supplies the metadata and both ranges needed by a personal legacy save. */
-function readPersonalSaveBook_() {
-  var id = environmentSpreadsheetId_();
+function readPersonalSaveBook_(config) {
+  var id = environmentSpreadsheetId_(config);
   if (!id) throw new Error('Run setupTracker in the Apps Script editor first.');
   var reference = personalSaveMetadata_(id), names = ['Issues', '_System'], metadata = reference.sheets;
   var ranges = ["'Issues'!A:U", "'_System'!A:B"], zone = reference.zone;
@@ -401,8 +412,17 @@ function invalidatePersonalSaveMetadata_(id) {
 }
 /** Personal legacy save: task, category and retry receipt commit in one Sheets API batch. */
 function savePersonalIssueBatch_(book, issue, current, snapshot, operationId, timing) {
-  var mark = Date.now(), sheet = book.getSheetByName('Issues'), system = book.getSheetByName('_System');
-  var row = current ? current._row : Math.max(2, sheet.getLastRow() + 1);
+  var plan = planPersonalIssueWrite_(book, issue, current, snapshot, operationId);
+  return commitPersonalIssueWrites_(book, [plan], timing)[0];
+}
+/** Plan without writing. A shared cursor reserves distinct rows and grid growth for a create batch. */
+function planPersonalIssueWrite_(book, issue, current, snapshot, operationId, cursor) {
+  var sheet = book.getSheetByName('Issues'), system = book.getSheetByName('_System');
+  cursor = cursor || {};
+  if (cursor.nextIssueRow === undefined) cursor.nextIssueRow = Math.max(2, sheet.getLastRow() + 1);
+  if (cursor.nextSystemRow === undefined) cursor.nextSystemRow = Math.max(2, system.getLastRow() + 1);
+  if (!cursor.capacities) cursor.capacities = {};
+  var row = current ? current._row : cursor.nextIssueRow++;
   var zone = book.getSpreadsheetTimeZone(), requests = [];
   function cell(value, kind) {
     if (value === '' || value == null) return { userEnteredValue: {} };
@@ -414,38 +434,57 @@ function savePersonalIssueBatch_(book, issue, current, snapshot, operationId, ti
     return { userEnteredValue: typeof value === 'number' ? { numberValue: value } : { stringValue: String(value) } };
   }
   function write(target, targetRow, values) {
-    if (targetRow > target.getMaxRows()) requests.push({ appendDimension: { sheetId: target.getSheetId(), dimension: 'ROWS', length: targetRow - target.getMaxRows() + 100 } });
-    requests.push({ updateCells: { start: { sheetId: target.getSheetId(), rowIndex: targetRow - 1, columnIndex: 0 }, rows: [{ values: values }], fields: 'userEnteredValue' } });
-    values.forEach(function (value, column) { if (value.userEnteredFormat) requests.push({ repeatCell: { range: { sheetId: target.getSheetId(), startRowIndex: targetRow - 1, endRowIndex: targetRow, startColumnIndex: column, endColumnIndex: column + 1 }, cell: { userEnteredFormat: value.userEnteredFormat }, fields: 'userEnteredFormat.numberFormat' } }); });
+    var sheetId = target.getSheetId();
+    if (cursor.capacities[sheetId] === undefined) cursor.capacities[sheetId] = target.getMaxRows();
+    if (targetRow > cursor.capacities[sheetId]) {
+      var growth = targetRow - cursor.capacities[sheetId] + 100;
+      requests.push({ appendDimension: { sheetId: sheetId, dimension: 'ROWS', length: growth } });
+      cursor.capacities[sheetId] += growth;
+    }
+    requests.push({ updateCells: { start: { sheetId: sheetId, rowIndex: targetRow - 1, columnIndex: 0 }, rows: [{ values: values }], fields: 'userEnteredValue' } });
+    values.forEach(function (value, column) { if (value.userEnteredFormat) requests.push({ repeatCell: { range: { sheetId: sheetId, startRowIndex: targetRow - 1, endRowIndex: targetRow, startColumnIndex: column, endColumnIndex: column + 1 }, cell: { userEnteredFormat: value.userEnteredFormat }, fields: 'userEnteredFormat.numberFormat' } }); });
   }
   var taskCells = TrackerCore.fields.map(function (field) { return cell(issue[field.key], field.kind); });
   write(sheet, row, taskCells);
   var saved = clientIssue_(issue); saved.version = legacyIssueVersion_(saved);
-  var nextSystemRow = Math.max(2, system.getLastRow() + 1);
   if ((snapshot.taskTypes[issue.id] || 'algo') !== issue.taskTypeId) {
     var typeKey = 'TASK_TYPE:' + issue.id;
     var typeIndex = snapshot.systemRows.findIndex(function (entry) { return String(entry[0]) === typeKey; });
-    write(system, typeIndex >= 0 ? typeIndex + 2 : nextSystemRow++, [cell(typeKey), cell(issue.taskTypeId), cell(new Date().toISOString(), 'timestamp')]);
+    write(system, typeIndex >= 0 ? typeIndex + 2 : cursor.nextSystemRow++, [cell(typeKey), cell(issue.taskTypeId), cell(new Date().toISOString(), 'timestamp')]);
   }
   var receiptKey = 'IDEMPOTENCY:' + operationId;
-  write(system, nextSystemRow, [cell(receiptKey), cell(JSON.stringify({ savedAt: new Date().toISOString(), result: saved })), cell(new Date().toISOString(), 'timestamp')]);
+  write(system, cursor.nextSystemRow++, [cell(receiptKey), cell(JSON.stringify({ savedAt: new Date().toISOString(), result: saved })), cell(new Date().toISOString(), 'timestamp')]);
+  return { requests: requests, saved: saved, row: row, taskCells: taskCells, sheetId: sheet.getSheetId() };
+}
+/** Commit all prepared task/category/receipt rows atomically and verify only returned effective values. */
+function commitPersonalIssueWrites_(book, plans, timing) {
+  if (!plans.length) return [];
+  timing = timing || {};
+  var mark = Date.now(), requests = [];
+  plans.forEach(function (plan) { requests = requests.concat(plan.requests); });
+  var firstRow = Math.min.apply(null, plans.map(function (plan) { return plan.row; }));
+  var lastRow = Math.max.apply(null, plans.map(function (plan) { return plan.row; }));
   // A request failure is never retried here: the browser retries the same operation ID.
   var response;
-  try { response = Sheets.Spreadsheets.batchUpdate({ requests: requests, includeSpreadsheetInResponse: true, responseRanges: ["'Issues'!A" + row + ':U' + row], responseIncludeGridData: true }, book.getId()); }
+  try { response = Sheets.Spreadsheets.batchUpdate({ requests: requests, includeSpreadsheetInResponse: true, responseRanges: ["'Issues'!A" + firstRow + ':U' + lastRow], responseIncludeGridData: true }, book.getId(), { fields: 'updatedSpreadsheet(sheets(properties(sheetId),data(startRow,rowData(values(effectiveValue)))))' }); }
   catch (error) { invalidatePersonalSaveMetadata_(book.getId()); throw error; }
+  if (requests.some(function (request) { return Boolean(request.appendDimension); })) invalidatePersonalSaveMetadata_(book.getId());
   timing.writeMs = Date.now() - mark; mark = Date.now();
-  var returnedSheet = response.updatedSpreadsheet && response.updatedSpreadsheet.sheets && response.updatedSpreadsheet.sheets.find(function (entry) { return entry.properties.sheetId === sheet.getSheetId(); });
-  var data = returnedSheet && returnedSheet.data && returnedSheet.data[0];
-  var values = data && data.rowData && data.rowData[0] && data.rowData[0].values || [];
-  var matches = taskCells.every(function (expected, index) {
-    var wanted = expected.userEnteredValue, actual = values[index] && values[index].effectiveValue || {};
-    if (wanted.numberValue !== undefined) return actual.numberValue !== undefined && Math.abs(wanted.numberValue - actual.numberValue) < 0.000000001;
-    if (wanted.stringValue !== undefined) return wanted.stringValue === actual.stringValue;
-    return Object.keys(actual).length === 0;
+  var matches = plans.every(function (plan) {
+    var returnedSheet = response.updatedSpreadsheet && response.updatedSpreadsheet.sheets && response.updatedSpreadsheet.sheets.find(function (entry) { return entry.properties.sheetId === plan.sheetId; });
+    var data = returnedSheet && returnedSheet.data && returnedSheet.data.find(function (entry) { return plan.row - 1 >= (entry.startRow || 0) && plan.row - 1 < (entry.startRow || 0) + (entry.rowData || []).length; });
+    var returnedRow = data && data.rowData[plan.row - 1 - (data.startRow || 0)];
+    var values = returnedRow && returnedRow.values || [];
+    return plan.taskCells.every(function (expected, index) {
+      var wanted = expected.userEnteredValue, actual = values[index] && values[index].effectiveValue || {};
+      if (wanted.numberValue !== undefined) return actual.numberValue !== undefined && Math.abs(wanted.numberValue - actual.numberValue) < 0.000000001;
+      if (wanted.stringValue !== undefined) return wanted.stringValue === actual.stringValue;
+      return Object.keys(actual).length === 0;
+    });
   });
   if (!matches) throw new Error('The save response could not be verified. Retry this save with the same operation ID.');
   timing.verifyMs = Date.now() - mark; timing.journalMs = 0; timing.writer = 'sheets-batch';
-  return saved;
+  return plans.map(function (plan) { return plan.saved; });
 }
 /** Atomic server command for status, parent and rank changes across views. */
 function moveIssue(id, move, expectedVersion, operationId) {
@@ -799,8 +838,8 @@ function issueFromRow_(row, rowNumber, book, taskTypes) {
   issue._row = rowNumber;
   return issue;
 }
-function getBook_() {
-  var id = environmentSpreadsheetId_();
+function getBook_(config) {
+  var id = environmentSpreadsheetId_(config);
   if (!id) throw new Error('Run setupTracker in the Apps Script editor first.');
   var book = SpreadsheetApp.openById(id);
   var sheet = book.getSheetByName('Issues');
@@ -808,8 +847,8 @@ function getBook_() {
   assertHeaders_(sheet);
   return book;
 }
-function environmentSpreadsheetId_() {
-  return typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.spreadsheetId() : PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+function environmentSpreadsheetId_(config) {
+  return typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.spreadsheetId(undefined, config) : config ? config.SPREADSHEET_ID || '' : PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
 }
 /** Plain browser data: Dates become ISO strings before crossing google.script.run. */
 function browserValue_(value) { return JSON.parse(JSON.stringify(value)); }
@@ -859,16 +898,16 @@ function assertHeaders_(sheet) {
   var actual = sheet.getRange(1, 1, 1, TrackerCore.fields.length).getValues()[0];
   if (actual.join('|') !== TrackerCore.fields.map(function (f) { return f.label; }).join('|')) throw new Error('Issues has different column headers. Keep the documented columns in their original order, or rename the existing tab before setup.');
 }
-function versionedRepositoryActive_(book, systemRows) {
-  var active = getRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA') === '2';
+function versionedRepositoryActive_(book, systemRows, config) {
+  var active = getRepositoryProperty_('SHEETFLOW_ACTIVE_SCHEMA', config) === '2';
   if (active && typeof SheetFlowSchema !== 'undefined' && !SheetFlowSchema.report(book, systemRows).ready) throw new Error('The versioned repository is active, but its schema is incomplete. Run setupTracker and repair the schema before continuing.');
   return active;
 }
-function repositoryPropertyKey_(base) {
-  var environment = typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.currentName() : '';
+function repositoryPropertyKey_(base, config) {
+  var environment = typeof SheetFlowEnvironment !== 'undefined' ? SheetFlowEnvironment.currentName(config) : '';
   return environment ? base + '_' + String(environment).toUpperCase() : base;
 }
-function getRepositoryProperty_(base) { return PropertiesService.getScriptProperties().getProperty(repositoryPropertyKey_(base)) || ''; }
+function getRepositoryProperty_(base, config) { return (config ? config[repositoryPropertyKey_(base, config)] : PropertiesService.getScriptProperties().getProperty(repositoryPropertyKey_(base))) || ''; }
 function setRepositoryProperty_(base, value) { PropertiesService.getScriptProperties().setProperty(repositoryPropertyKey_(base), String(value)); }
 function deleteRepositoryProperty_(base) { PropertiesService.getScriptProperties().deleteProperty(repositoryPropertyKey_(base)); }
 function writeIssue_(book, issue, current, snapshot) {
@@ -1013,7 +1052,7 @@ function readIssues_(book, snapshot) {
     seen[issue.id] = true;
     if (TrackerCore.statuses.indexOf(issue.status) < 0 || TrackerCore.types.indexOf(issue.type) < 0) throw new Error('Row ' + (index + 2) + ' has an invalid Type or Status. Correct it in Sheets.');
     issue.taskTypeId = taskTypes[issue.id] || 'algo';
-    issue.version = legacyIssueVersion_(issue);
+    issue.version = snapshot && snapshot.onlyVersionFor !== undefined && issue.id !== snapshot.onlyVersionFor ? '' : legacyIssueVersion_(issue);
     issue._row = index + 2;
     return issue;
   }).filter(Boolean);
@@ -1028,11 +1067,12 @@ function toRow_(issue, book) {
     return value;
   });
 }
-function nextId_(issues) {
-  var properties = PropertiesService.getScriptProperties();
-  var highest = Math.max(Number(properties.getProperty('LAST_ISSUE_NUMBER')) || 0, 0);
+function nextId_(issues, request) {
+  var properties = request ? request.properties : PropertiesService.getScriptProperties();
+  var highest = Math.max(Number(request ? request.config.LAST_ISSUE_NUMBER : properties.getProperty('LAST_ISSUE_NUMBER')) || 0, 0);
   issues.forEach(function (i) { var m = /^PRJ-(\d+)$/.exec(i.id); if (m) highest = Math.max(highest, Number(m[1])); });
   properties.setProperty('LAST_ISSUE_NUMBER', String(highest + 1));
+  if (request) request.config.LAST_ISSUE_NUMBER = String(highest + 1);
   return 'PRJ-' + (highest + 1);
 }
 function today_(book) { return Utilities.formatDate(new Date(), book.getSpreadsheetTimeZone(), 'yyyy-MM-dd'); }
