@@ -32,7 +32,9 @@ You can also open `dist/index.html` directly, or upload that single file to an H
 
 Saved views capture the current filters, view, sort, visible columns, swimlane setting, and collapse state. They are personal to the current browser and do not sync to other users.
 
-In **Sheet**, drag the dotted row grip, use the up/down buttons, or focus the grip and press Alt + Up/Down to reorder siblings under the same parent. Siblings can have different statuses. A move switches column-sorted views to **Manual order**, keeps a Story's children attached, and preserves status, parent, dates, and the relative order of hidden rows. Undo reverses the move. To change a task's parent, use the Parent field or Gantt hierarchy controls.
+In **Sheet**, drag the dotted row grip to a row's **center** to make that row the new parent, or to an **Epic header** to move into that Epic. Drop at the **top/bottom quarter** of a row to insert before/after it and adopt its parent. A **Drop here to remove parent** target appears during non-Epic drags. Valid destinations highlight; invalid parent types, self-drops and cycles are blocked. Stories belong under Epics; Tasks/Bugs can also nest under other Tasks/Bugs. The Parent field/editor remains available as a keyboard alternative.
+
+The up/down buttons and Alt + Up/Down keep the same parent and reorder siblings regardless of status. Drag moves switch column-sorted views to **Manual order**, expand the destination group, retain descendant links and preserve status, dates, dependencies and hidden siblings. Undo reverses the saved move. Inline Parent selects retain the current nested Task/Bug parent; the full editor lists all valid parent candidates and excludes self/descendants.
 
 Direct views: `#sheet`, `#kanban`, and `#gantt` (or `?view=sheet`, `?view=kanban`, `?view=gantt`).
 

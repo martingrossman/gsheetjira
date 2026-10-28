@@ -99,6 +99,8 @@ Only the title is required when creating a task. Other fields receive configured
 - Show the insertion position while dragging and allow undo of a reorder.
 - Make manual ordering available when another sort is active, and preserve the relative order of items hidden by filters.
 - In the hierarchical Sheet view, sibling order is independent of status. Keep row move controls usable after loading or refreshing; initiating a move from a column-sorted view switches to Manual order.
+- In Sheet, support parent changes by dropping the row grip on a valid parent row's center or an Epic header. Row edges insert before/after the target and adopt its parent; provide a separate target to remove the parent. Show valid/invalid feedback and reject self-drops, invalid parent types and descendant cycles before saving.
+- Preserve a moved item's descendants, status, dates and dependencies; expand the destination and support revision-checked undo/reload persistence. Keep up/down controls within the existing parent. Parent selectors must retain valid Task/Bug nesting and exclude self/descendants.
 
 ## 5. Task List
 
