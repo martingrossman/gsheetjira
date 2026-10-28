@@ -65,6 +65,7 @@
 .bulk-create-preview.error{color:var(--red);border-color:#FECACA;background:var(--red-soft)}
 .bulk-create-dialog .dialog-footer>span{font-size:10px;color:var(--muted)}
 .sheet-tools{display:flex;justify-content:space-between;align-items:center;gap:10px}.sheet-tool-actions{display:flex;align-items:center;gap:14px}.sheet-tool-actions .button{height:28px;padding:0 9px;font-size:9px}.sheet-tool-actions .button.selected{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}.sheet-id-cell{display:flex;align-items:center;gap:5px;padding-left:calc(var(--sheet-depth,0)*14px);box-sizing:border-box}.sheet-tree-toggle,.sheet-tree-spacer{flex:0 0 16px;width:16px;height:18px}.sheet-tree-toggle{display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line);border-radius:4px;background:var(--surface-muted);color:var(--muted);font-size:11px;line-height:1;cursor:pointer}.sheet-tree-toggle:hover,.sheet-tree-toggle:focus-visible{border-color:var(--primary);background:var(--primary-soft);color:var(--primary);outline:none}.sheet-row-controls{display:inline-flex;align-items:center;gap:1px;flex:0 0 auto}.sheet-row-controls button{width:17px;height:20px;min-width:17px;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--muted);font-size:10px;line-height:1;cursor:pointer}.sheet-row-controls button:hover:not(:disabled),.sheet-row-controls button:focus-visible{border-color:var(--line);background:var(--surface-muted);color:var(--primary);outline:none}.sheet-row-controls button:disabled{opacity:.35;cursor:not-allowed}.sheet-row-grip[draggable=true]{cursor:grab}.sheet-row-grip[draggable=true]:active{cursor:grabbing}.sheet-row-grip[aria-disabled=true]{cursor:not-allowed}.sheet-issue-row.sheet-dragging{opacity:.45}.sheet-issue-row.sheet-drop-before td{box-shadow:inset 0 2px var(--primary)}.sheet-issue-row.sheet-drop-after td{box-shadow:inset 0 -2px var(--primary)}
+.filter-menu{position:relative;flex:0 0 auto}.filter-menu>summary{list-style:none;display:flex;align-items:center;min-width:100px;height:32px;padding:0 25px 0 10px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:10px;color:var(--ink);cursor:pointer;white-space:nowrap}.filter-menu>summary::-webkit-details-marker{display:none}.filter-menu>summary:after{content:'⌄';margin-left:auto;margin-right:-16px;color:var(--muted)}.filter-menu[open]>summary{border-color:var(--primary)}.filter-menu-options{position:absolute;top:calc(100% + 5px);left:0;z-index:25;min-width:150px;padding:8px;display:grid;gap:2px;border:1px solid var(--line);border-radius:6px;background:var(--surface);box-shadow:0 8px 24px #0F172A1A}.filter-option{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:4px;font-size:10px;color:var(--ink);cursor:pointer}.filter-option:hover{background:var(--surface-muted)}.filter-option input{accent-color:var(--primary)}.filters input[type=date]{width:128px;height:32px;padding:0 5px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-size:9px}.date-filter{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--muted);white-space:nowrap}.active-filter-chips{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:-9px 0 12px}.filter-chip{display:inline-flex;align-items:center;gap:7px;max-width:min(260px,90vw);padding:4px 7px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--muted);font-size:9px}.filter-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.filter-chip b{font-size:12px;line-height:10px;color:var(--muted);font-weight:500}.filter-chip:hover{border-color:var(--primary);color:var(--primary)}
 @media(max-width:520px){.quick-entry #bulk-create-open{padding:0 7px}.bulk-create-body{padding:20px}}
 </style>
 
@@ -93,7 +94,8 @@
       <div class="stats" id="stats" aria-label="Project statistics"></div>
     <div class="quick-entry" aria-label="Quick create task"><input id="quick-title" type="text" maxlength="250" placeholder="What needs doing? Press Enter to add a task" aria-label="New task title"><button id="quick-add" class="button primary" type="button">Add task</button><button id="bulk-create-open" class="button secondary" type="button">Paste list</button></div>
     <div class="view-bar"><div class="tabs" role="tablist" aria-label="Project view"><button data-view="sheet" role="tab"><span data-icon="sheet"></span>Sheet</button><button data-view="kanban" role="tab"><span data-icon="board"></span>Kanban</button><button data-view="gantt" role="tab"><span data-icon="timeline"></span>Gantt</button></div><div class="view-actions"><label class="button subtle view-toggle" title="Group this view into epic swimlanes"><input id="swimlanes-toggle" type="checkbox" checked> Swimlanes</label><button id="undo-last-action" class="button subtle" type="button" disabled title="Undo the last saved issue change">Undo</button><button id="refresh" class="button subtle"><span data-icon="refresh"></span><span>Refresh</span></button><button id="export" class="button subtle"><span data-icon="download"></span><span>Export CSV</span></button></div></div>
-      <div class="toolbar"><label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="Search issues…" aria-label="Search issues"><kbd>/</kbd></label><div class="filters"><select id="type-filter" aria-label="Filter by type"><option value="">All types</option></select><select id="assignee-filter" aria-label="Filter by assignee"><option value="">Anyone</option></select><select id="status-filter" aria-label="Filter by status"><option value="">All statuses</option></select><select id="sprint-filter" aria-label="Filter by sprint"><option value="">All sprints</option></select><button id="clear-filters" class="button subtle" hidden>Clear filters</button></div><span id="issue-count" class="issue-count"></span></div>
+      <div class="toolbar"><label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="Search issues…" aria-label="Search issues"><kbd>/</kbd></label><div class="filters"><details id="type-filter-menu" class="filter-menu"><summary id="type-filter-label" aria-label="Filter by one or more types">All types</summary><div id="type-filter" class="filter-menu-options" role="group" aria-label="Issue types"></div></details><select id="priority-filter" aria-label="Filter by priority"><option value="">All priorities</option></select><select id="tag-filter" aria-label="Filter by tag"><option value="">All tags</option></select><select id="assignee-filter" aria-label="Filter by assignee"><option value="">Anyone</option></select><select id="status-filter" aria-label="Filter by status"><option value="">All statuses</option></select><select id="sprint-filter" aria-label="Filter by sprint"><option value="">All sprints</option></select><label class="date-filter"><span>Start ≥</span><input id="start-date-filter" type="date" aria-label="Start on or after"></label><label class="date-filter"><span>Due ≤</span><input id="due-date-filter" type="date" aria-label="Due on or before"></label><button id="clear-filters" class="button subtle" hidden>Clear filters</button></div><span id="issue-count" class="issue-count"></span></div>
+      <div id="active-filter-chips" class="active-filter-chips" hidden></div>
       <div id="filter-context" class="filter-context" hidden></div>
       <div id="error-banner" class="error-banner" role="alert" hidden></div>
       <section id="view-content" aria-label="Project issues"><div class="empty-state"><div class="loader"></div><h2>Getting your workspace ready</h2><p>Your issues will appear here.</p></div></section>
@@ -345,7 +347,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   const undoStorageKey = 'sheetflow.undo.v1';
   const uiStorageKey = 'sheetflow.ui.v1';
   const noEpicLaneKey = '__no_epic__';
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', types: [], priority: '', tag: '', startAfter: '', dueBefore: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
@@ -709,13 +711,20 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   }
   function filtered() {
     const q = state.query.toLowerCase().trim();
-    return C.sorted(state.issues.filter(i => (!state.type || i.type === state.type) && (!state.status || i.status === state.status) && (!state.sprint || i.sprint === state.sprint) && (!state.assignee || (state.assignee === '__unassigned' ? !i.assignee : i.assignee === state.assignee)) && inEpic(i) && (!q || [i.id, i.summary, i.description, i.assignee, i.labels, i.parentId, i.sprint].join(' ').toLowerCase().includes(q))));
+    return C.sorted(state.issues.filter(i => {
+      const dates = effectiveDates(i);
+      return (!state.types.length || state.types.includes(i.type)) && (!state.priority || i.priority === state.priority) && (!state.tag || C.split(i.labels).includes(state.tag)) && (!state.startAfter || (dates.startDate && dates.startDate >= state.startAfter)) && (!state.dueBefore || (dates.dueDate && dates.dueDate <= state.dueBefore)) && (!state.status || i.status === state.status) && (!state.sprint || i.sprint === state.sprint) && (!state.assignee || (state.assignee === '__unassigned' ? !i.assignee : i.assignee === state.assignee)) && inEpic(i) && (!q || [i.id, i.summary, i.description, i.assignee, i.labels, i.parentId, i.sprint].join(' ').toLowerCase().includes(q));
+    }));
   }
   function options(items, selected = '', empty = null) {
     return (empty === null ? '' : `<option value="">${escape(empty)}</option>`) + items.map(item => { const value = typeof item === 'string' ? item : item.value; const label = typeof item === 'string' ? item : item.label; return `<option value="${escape(value)}" ${value === selected ? 'selected' : ''}>${escape(label)}</option>`; }).join('');
   }
   function renderFilters() {
-    $('#type-filter').innerHTML = options(C.types, state.type, 'All types');
+    $('#type-filter').innerHTML = C.types.map(type => `<label class="filter-option"><input type="checkbox" data-type-filter="${escape(type)}" value="${escape(type)}" ${state.types.includes(type) ? 'checked' : ''}><span>${escape(type)}</span></label>`).join('');
+    $('#type-filter-label').textContent = state.types.length ? `Types (${state.types.length})` : 'All types';
+    $('#priority-filter').innerHTML = options(C.priorities, state.priority, 'All priorities');
+    const tags = [...new Set(state.issues.flatMap(issue => C.split(issue.labels)))].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    $('#tag-filter').innerHTML = options(tags, state.tag, 'All tags');
     $('#status-filter').innerHTML = options(C.statuses, state.status, 'All statuses');
     const people = [...new Set(state.issues.map(i => i.assignee).filter(Boolean))].sort();
     const sprints = [...new Set(state.issues.map(i => i.sprint).filter(Boolean))].sort();
@@ -723,8 +732,23 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (state.sprint && !sprints.includes(state.sprint)) sprints.push(state.sprint);
     $('#assignee-filter').innerHTML = options([{ value: '__unassigned', label: 'Unassigned' }, ...people], state.assignee, 'Anyone');
     $('#sprint-filter').innerHTML = options(sprints, state.sprint, 'All sprints');
+    $('#start-date-filter').value = state.startAfter;
+    $('#due-date-filter').value = state.dueBefore;
     $('#people').innerHTML = options(people); $('#sprints').innerHTML = options(sprints);
-    $('#clear-filters').hidden = ![state.query, state.type, state.assignee, state.status, state.sprint, state.epic].some(Boolean);
+    const active = [];
+    if (state.query) active.push({ key: 'query', label: `Search: ${state.query}` });
+    state.types.forEach(type => active.push({ key: 'type', value: type, label: `Type: ${type}` }));
+    if (state.priority) active.push({ key: 'priority', label: `Priority: ${state.priority}` });
+    if (state.tag) active.push({ key: 'tag', label: `Tag: ${state.tag}` });
+    if (state.assignee) active.push({ key: 'assignee', label: `Assignee: ${state.assignee === '__unassigned' ? 'Unassigned' : state.assignee}` });
+    if (state.status) active.push({ key: 'status', label: `Status: ${state.status}` });
+    if (state.sprint) active.push({ key: 'sprint', label: `Sprint: ${state.sprint}` });
+    if (state.startAfter) active.push({ key: 'startAfter', label: `Start ≥ ${state.startAfter}` });
+    if (state.dueBefore) active.push({ key: 'dueBefore', label: `Due ≤ ${state.dueBefore}` });
+    if (state.epic) active.push({ key: 'epic', label: `Epic: ${issueById(state.epic)?.summary || state.epic}` });
+    $('#active-filter-chips').innerHTML = active.map(filter => `<button type="button" class="filter-chip" data-remove-filter="${filter.key}" ${filter.value ? `data-filter-value="${escape(filter.value)}"` : ''} aria-label="Remove ${escape(filter.label)} filter"><span>${escape(filter.label)}</span><b aria-hidden="true">×</b></button>`).join('');
+    $('#active-filter-chips').hidden = !active.length;
+    $('#clear-filters').hidden = !active.length;
     $('#filter-context').hidden = !state.epic;
     $('#filter-context').textContent = state.epic ? `Epic: ${issueById(state.epic)?.summary || state.epic} · Includes all child issues` : '';
   }
@@ -1205,7 +1229,8 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     } catch (error) { if (dialog.open && formSession === session) { setFormSaveStatus('Save failed · draft kept', true); $('#form-error').textContent = error.message; $('#form-error').hidden = false; $('#form-error').scrollIntoView({ block: 'nearest' }); } }
   }
   function clearFilters() {
-    ['query', 'type', 'assignee', 'status', 'sprint', 'epic'].forEach(key => state[key] = ''); $('#search').value = ''; render();
+    ['query', 'priority', 'tag', 'startAfter', 'dueBefore', 'assignee', 'status', 'sprint', 'epic'].forEach(key => state[key] = '');
+    state.types = []; $('#search').value = ''; render();
   }
   function setView(view) {
     if (!['sheet', 'kanban', 'gantt'].includes(view)) view = 'kanban';
@@ -1225,7 +1250,21 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $('#add-epic').addEventListener('click', () => openIssue('', { type: 'Epic' }));
   $('#refresh').addEventListener('click', () => refresh());
   $('#search').addEventListener('input', event => { state.query = event.target.value; render(); });
-  for (const key of ['type', 'assignee', 'status', 'sprint']) $(`#${key}-filter`).addEventListener('change', event => { state[key] = event.target.value; render(); });
+  $('#type-filter').addEventListener('change', event => {
+    if (!event.target.matches('[data-type-filter]')) return;
+    const value = event.target.value;
+    state.types = C.types.filter(type => $(`[data-type-filter="${CSS.escape(type)}"]`)?.checked);
+    render(); $(`[data-type-filter="${CSS.escape(value)}"]`)?.focus();
+  });
+  for (const key of ['assignee', 'status', 'sprint', 'priority', 'tag']) $(`#${key}-filter`).addEventListener('change', event => { state[key] = event.target.value; render(); });
+  $('#start-date-filter').addEventListener('change', event => { state.startAfter = C.validDate(event.target.value) ? event.target.value : ''; render(); });
+  $('#due-date-filter').addEventListener('change', event => { state.dueBefore = C.validDate(event.target.value) ? event.target.value : ''; render(); });
+  $('#active-filter-chips').addEventListener('click', event => {
+    const chip = event.target.closest('[data-remove-filter]'); if (!chip) return;
+    if (chip.dataset.removeFilter === 'type') state.types = state.types.filter(type => type !== chip.dataset.filterValue);
+    else state[chip.dataset.removeFilter] = '';
+    render();
+  });
   $('#clear-filters').addEventListener('click', clearFilters);
   form.addEventListener('input', event => {
     if (!event.target.matches('input[type="text"], input:not([type]), textarea')) return;
