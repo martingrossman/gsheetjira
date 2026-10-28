@@ -64,7 +64,7 @@
 .bulk-create-preview{padding:9px 11px;border:1px solid var(--line);border-radius:6px;background:var(--surface-muted);font-size:11px}
 .bulk-create-preview.error{color:var(--red);border-color:#FECACA;background:var(--red-soft)}
 .bulk-create-dialog .dialog-footer>span{font-size:10px;color:var(--muted)}
-.sheet-tools{display:flex;justify-content:space-between;align-items:center;gap:10px}.sheet-tool-actions{display:flex;align-items:center;gap:14px}.sheet-tool-actions .button{height:28px;padding:0 9px;font-size:9px}.sheet-tool-actions .button.selected{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}.sheet-id-cell{display:flex;align-items:center;gap:5px}.sheet-row-controls{display:inline-flex;align-items:center;gap:1px;flex:0 0 auto}.sheet-row-controls button{width:17px;height:20px;min-width:17px;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--muted);font-size:10px;line-height:1;cursor:pointer}.sheet-row-controls button:hover:not(:disabled),.sheet-row-controls button:focus-visible{border-color:var(--line);background:var(--surface-muted);color:var(--primary);outline:none}.sheet-row-controls button:disabled{opacity:.35;cursor:not-allowed}.sheet-row-grip[draggable=true]{cursor:grab}.sheet-row-grip[draggable=true]:active{cursor:grabbing}.sheet-row-grip[aria-disabled=true]{cursor:not-allowed}.sheet-issue-row.sheet-dragging{opacity:.45}.sheet-issue-row.sheet-drop-before td{box-shadow:inset 0 2px var(--primary)}.sheet-issue-row.sheet-drop-after td{box-shadow:inset 0 -2px var(--primary)}
+.sheet-tools{display:flex;justify-content:space-between;align-items:center;gap:10px}.sheet-tool-actions{display:flex;align-items:center;gap:14px}.sheet-tool-actions .button{height:28px;padding:0 9px;font-size:9px}.sheet-tool-actions .button.selected{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}.sheet-id-cell{display:flex;align-items:center;gap:5px;padding-left:calc(var(--sheet-depth,0)*14px);box-sizing:border-box}.sheet-tree-toggle,.sheet-tree-spacer{flex:0 0 16px;width:16px;height:18px}.sheet-tree-toggle{display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line);border-radius:4px;background:var(--surface-muted);color:var(--muted);font-size:11px;line-height:1;cursor:pointer}.sheet-tree-toggle:hover,.sheet-tree-toggle:focus-visible{border-color:var(--primary);background:var(--primary-soft);color:var(--primary);outline:none}.sheet-row-controls{display:inline-flex;align-items:center;gap:1px;flex:0 0 auto}.sheet-row-controls button{width:17px;height:20px;min-width:17px;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--muted);font-size:10px;line-height:1;cursor:pointer}.sheet-row-controls button:hover:not(:disabled),.sheet-row-controls button:focus-visible{border-color:var(--line);background:var(--surface-muted);color:var(--primary);outline:none}.sheet-row-controls button:disabled{opacity:.35;cursor:not-allowed}.sheet-row-grip[draggable=true]{cursor:grab}.sheet-row-grip[draggable=true]:active{cursor:grabbing}.sheet-row-grip[aria-disabled=true]{cursor:not-allowed}.sheet-issue-row.sheet-dragging{opacity:.45}.sheet-issue-row.sheet-drop-before td{box-shadow:inset 0 2px var(--primary)}.sheet-issue-row.sheet-drop-after td{box-shadow:inset 0 -2px var(--primary)}
 @media(max-width:520px){.quick-entry #bulk-create-open{padding:0 7px}.bulk-create-body{padding:20px}}
 </style>
 
@@ -345,16 +345,16 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   const undoStorageKey = 'sheetflow.undo.v1';
   const uiStorageKey = 'sheetflow.ui.v1';
   const noEpicLaneKey = '__no_epic__';
-  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], collapsedEpics: {}, collapsedGanttStories: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
+  const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], collapsedEpics: {}, collapsedGanttStories: {}, collapsedSheetParents: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { state.quickQueue = JSON.parse(localStorage.getItem(quickQueueStorageKey) || '[]') || []; } catch (ignore) { state.quickQueue = []; }
   try { state.bulkDraft = JSON.parse(localStorage.getItem(bulkDraftStorageKey) || 'null'); } catch (ignore) { state.bulkDraft = null; }
   try { state.undoStack = JSON.parse(localStorage.getItem(undoStorageKey) || '[]') || []; } catch (ignore) { state.undoStack = []; }
-  try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.collapsedGanttStories = ui.collapsedGanttStories || {}; state.swimlanes = ui.swimlanes !== false; state.ganttLabelWidth = clampGanttLabelWidth(ui.ganttLabelWidth || 260); } catch (ignore) { state.collapsedEpics = {}; state.collapsedGanttStories = {}; }
+  try { const ui = JSON.parse(localStorage.getItem(uiStorageKey) || '{}'); state.collapsedEpics = ui.collapsedEpics || {}; state.collapsedGanttStories = ui.collapsedGanttStories || {}; state.collapsedSheetParents = ui.collapsedSheetParents || {}; state.swimlanes = ui.swimlanes !== false; state.ganttLabelWidth = clampGanttLabelWidth(ui.ganttLabelWidth || 260); } catch (ignore) { state.collapsedEpics = {}; state.collapsedGanttStories = {}; state.collapsedSheetParents = {}; }
   function clampGanttLabelWidth(value) { const max = Math.min(480, Math.max(1, window.innerWidth * 0.6)), min = Math.min(180, max); return Math.round(Math.max(min, Math.min(max, Number(value) || 260))); }
-  function saveUiState() { localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, collapsedGanttStories: state.collapsedGanttStories, swimlanes: state.swimlanes, ganttLabelWidth: state.ganttLabelWidth })); }
+  function saveUiState() { localStorage.setItem(uiStorageKey, JSON.stringify({ collapsedEpics: state.collapsedEpics, collapsedGanttStories: state.collapsedGanttStories, collapsedSheetParents: state.collapsedSheetParents, swimlanes: state.swimlanes, ganttLabelWidth: state.ganttLabelWidth })); }
   function saveUndoState() { localStorage.setItem(undoStorageKey, JSON.stringify(state.undoStack.slice(-50))); updateUndoControl(); }
   function updateUndoControl() { const button = $('#undo-last-action'); if (button) { const entry = state.undoStack.at(-1); button.disabled = !entry; button.title = entry ? `Undo last saved change to ${entry.id}` : 'No saved issue changes to undo'; } }
   function undoSnapshot(issue) { return Object.fromEntries([...C.fields.map(field => [field.key, issue[field.key]]), ['taskTypeId', issue.taskTypeId]]); }
@@ -373,6 +373,11 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   function setGanttStoryCollapsed(id, collapsed) {
     if (!id) return;
     if (collapsed) state.collapsedGanttStories[id] = true; else delete state.collapsedGanttStories[id];
+    saveUiState();
+  }
+  function setSheetParentCollapsed(id, collapsed) {
+    if (!id) return;
+    if (collapsed) state.collapsedSheetParents[id] = true; else delete state.collapsedSheetParents[id];
     saveUiState();
   }
   function cancelGanttStoryClick() {
@@ -741,7 +746,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     ].map(s => `<div class="stat"><div class="stat-label">${icon(s[0])}${s[1]}</div><div class="stat-bottom"><span class="stat-number">${s[2]}</span><span class="stat-note ${s[4]}">${s[3]}</span></div></div>`).join('');
     $('#epic-nav').innerHTML = state.issues.filter(i => i.type === 'Epic').map(i => `<button data-epic="${escape(i.id)}" class="${state.epic === i.id ? 'active' : ''}" title="${escape(i.summary)}"><span class="epic-dot"></span><span class="epic-name">${escape(i.summary)}</span></button>`).join('') || '<span class="nav-caption">No epics yet</span>';
     $('#issue-count').textContent = `${issues.length} of ${state.issues.length} issues`;
-    $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Edit cells to save. Use Manual order and the row arrows or drag handle to reorder siblings. Click an issue ID for details.', gantt: 'Double-click labels or bars to edit. Drag bars to reschedule; Epic spans follow child schedules.' }[state.view];
+    $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Expand parent rows to see children. Use Manual order and row controls to reorder siblings. Click an issue ID for details.', gantt: 'Double-click labels or bars to edit. Drag bars to reschedule; Epic spans follow child schedules.' }[state.view];
     if (!state.issues.length) { $('#view-content').innerHTML = `<div class="empty-state">${icon('stack')}<h2>A fresh start for your next project.</h2><p>Create your first epic, story, task, or bug.</p><button class="button primary" data-new="Backlog">Create your first issue</button></div>`; return; }
     if (!issues.length) { $('#view-content').innerHTML = '<div class="empty-state"><h2>No issues match these filters.</h2><p>Try a different search, or clear the filters to see everything.</p><button class="button secondary" data-clear>Clear filters</button></div>'; return; }
     const content = $('#view-content'), oldScroll = content.querySelector('.board, .table-wrap, .gantt-viewport');
@@ -812,20 +817,57 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const primary = ['id', 'type', 'parentId', 'summary', 'status', 'priority', 'assignee', 'startDate', 'dueDate', 'progress', 'estimate', 'sprint'];
     const columns = C.fields.filter(f => state.allColumns || primary.includes(f.key));
     columns.splice(Math.min(2, columns.length), 0, { key: 'taskTypeId', label: 'Activity Type', kind: 'text' });
-    const list = issues.slice().sort((a, b) => {
+    const list = sortSheetItems(issues);
+    const manualOrder = state.sort === 'rank' && state.ascending;
+    const renderRow = node => {
+      const issue = node.issue, treeToggle = sheetTreeToggle(node);
+      return `<tr class="sheet-issue-row" data-sheet-row-id="${escape(issue.id)}" data-sheet-depth="${node.depth}" data-sheet-status="${escape(issue.status)}" data-sheet-parent="${escape(issue.parentId || '')}">${columns.map(field => `<td>${field.key === 'id' ? `<div class="sheet-id-cell" style="--sheet-depth:${node.depth}">${treeToggle}${sheetRowControls(issue, list, manualOrder)}${cell(issue, field)}</div>` : cell(issue, field)}</td>`).join('')}</tr>`;
+    };
+    const body = state.swimlanes
+      ? epicLanes(list).map(lane => {
+        const collapsed = laneCollapsed(lane);
+        return `<tbody class="sheet-lane-group"><tr class="sheet-lane-row"><td colspan="${columns.length}">${renderSwimlaneHeader(lane, 'sheet-lane-title')}</td></tr>${collapsed ? '' : sheetHierarchyRows(lane.items, lane.id).map(renderRow).join('')}</tbody>`;
+      }).join('')
+      : `<tbody>${sheetHierarchyRows(list).map(renderRow).join('')}</tbody>`;
+    $('#view-content').innerHTML = `<div class="sheet-tools"><span>Every detail, in one place.</span><div class="sheet-tool-actions"><button type="button" class="button secondary ${manualOrder ? 'selected' : ''}" data-sheet-manual aria-pressed="${manualOrder}" title="Enable rank-based order to move rows">Manual order</button><label><input id="all-columns" type="checkbox" ${state.allColumns ? 'checked' : ''}> Show all ${C.fields.length} columns</label></div></div><div class="table-wrap"><table class="issue-table"><thead><tr>${columns.map(field => `<th><button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button></th>`).join('')}</tr></thead>${body}</table></div>`;
+  }
+  function sortSheetItems(items) {
+    return items.slice().sort((a, b) => {
       const x = effectiveDates(a)[state.sort] ?? a[state.sort], y = effectiveDates(b)[state.sort] ?? b[state.sort];
       const order = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
       return order * (state.ascending ? 1 : -1);
     });
-    const manualOrder = state.sort === 'rank' && state.ascending;
-    const renderRow = issue => `<tr class="sheet-issue-row" data-sheet-row-id="${escape(issue.id)}" data-sheet-status="${escape(issue.status)}" data-sheet-parent="${escape(issue.parentId || '')}">${columns.map(field => `<td>${field.key === 'id' ? `<div class="sheet-id-cell">${sheetRowControls(issue, list, manualOrder)}${cell(issue, field)}</div>` : cell(issue, field)}</td>`).join('')}</tr>`;
-    const body = state.swimlanes
-      ? epicLanes(list).map(lane => {
-        const collapsed = laneCollapsed(lane);
-        return `<tbody class="sheet-lane-group"><tr class="sheet-lane-row"><td colspan="${columns.length}">${renderSwimlaneHeader(lane, 'sheet-lane-title')}</td></tr>${collapsed ? '' : lane.items.map(renderRow).join('')}</tbody>`;
-      }).join('')
-      : `<tbody>${list.map(renderRow).join('')}</tbody>`;
-    $('#view-content').innerHTML = `<div class="sheet-tools"><span>Every detail, in one place.</span><div class="sheet-tool-actions"><button type="button" class="button secondary ${manualOrder ? 'selected' : ''}" data-sheet-manual aria-pressed="${manualOrder}" title="Enable rank-based order to move rows">Manual order</button><label><input id="all-columns" type="checkbox" ${state.allColumns ? 'checked' : ''}> Show all ${C.fields.length} columns</label></div></div><div class="table-wrap"><table class="issue-table"><thead><tr>${columns.map(field => `<th><button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button></th>`).join('')}</tr></thead>${body}</table></div>`;
+  }
+  function sheetHierarchyRows(items, laneParentId = '') {
+    const byId = new Map(items.map(issue => [issue.id, issue])), children = new Map(), roots = [];
+    items.forEach(issue => {
+      const parent = byId.get(issue.parentId);
+      if (!parent || parent.id === laneParentId) roots.push(issue);
+      else { if (!children.has(parent.id)) children.set(parent.id, []); children.get(parent.id).push(issue); }
+    });
+    const rows = [], seen = new Set();
+    function hideDescendants(parentId) {
+      sortSheetItems(children.get(parentId) || []).forEach(child => {
+        if (seen.has(child.id)) return;
+        seen.add(child.id); hideDescendants(child.id);
+      });
+    }
+    function add(issue, depth) {
+      if (seen.has(issue.id)) return;
+      seen.add(issue.id);
+      const descendants = sortSheetItems(children.get(issue.id) || []);
+      rows.push({ issue, depth, hasChildren: descendants.length > 0, childCount: descendants.length });
+      if (state.collapsedSheetParents[issue.id]) { hideDescendants(issue.id); return; }
+      descendants.forEach(child => add(child, depth + 1));
+    }
+    sortSheetItems(roots).forEach(issue => add(issue, laneParentId && issue.parentId === laneParentId ? 1 : 0));
+    sortSheetItems(items.filter(issue => !seen.has(issue.id))).forEach(issue => add(issue, 0));
+    return rows;
+  }
+  function sheetTreeToggle(node) {
+    if (!node.hasChildren) return '<span class="sheet-tree-spacer" aria-hidden="true"></span>';
+    const collapsed = Boolean(state.collapsedSheetParents[node.issue.id]), action = collapsed ? 'Expand' : 'Collapse';
+    return `<button type="button" class="sheet-tree-toggle" data-toggle-sheet-parent="${escape(node.issue.id)}" aria-expanded="${!collapsed}" aria-label="${action} ${node.childCount} direct children under ${escape(node.issue.summary)}" title="${action} ${node.childCount} child items">${collapsed ? '+' : '−'}</button>`;
   }
   function sheetRowControls(issue, list, manualOrder) {
     const visible = list.filter(item => item.status === issue.status && (item.parentId || '') === (issue.parentId || ''));
@@ -1243,10 +1285,11 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const storyLabel = event.target.closest('.gantt-row-label.has-story-toggle');
     if (ganttStoryClickTimer && (!storyLabel || storyLabel.dataset.open !== ganttStoryClickTimer.id || event.detail > 1)) cancelGanttStoryClick();
     if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover();
-    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-sheet-manual], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-gantt-add]');
+    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-sheet-manual], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-toggle-sheet-parent], [data-gantt-add]');
     if (!target) return;
     if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
     else if (target.hasAttribute('data-toggle-gantt-story')) { cancelGanttStoryClick(); const id = target.dataset.toggleGanttStory; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }
+    else if (target.hasAttribute('data-toggle-sheet-parent')) { const id = target.dataset.toggleSheetParent; setSheetParentCollapsed(id, !state.collapsedSheetParents[id]); render(); }
     else if (target.hasAttribute('data-gantt-add')) {
       hideGanttCommentPreview();
       const old = document.querySelector('.gantt-quick-popover');
