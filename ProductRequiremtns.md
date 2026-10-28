@@ -160,6 +160,10 @@ Only the title is required when creating a task. Other fields receive configured
 
 ## 7. Gantt Chart
 
+- Show a newly submitted Story/Task immediately as a pending row under its saved parent while Sheets confirms the save. Keep unsaved rows outside the shared task collection and label Saving, Queued, or Save unconfirmed accurately.
+- Keep the quick-entry popup open for consecutive submissions, with a fresh operation ID per submission. Preserve the next title, selected type, cursor/focus and popup position across redraws. Reveal a new row inside the timeline without moving the page or resetting horizontal scroll.
+- Expand a collapsed target parent when adding work. Preserve failed/interrupted drafts with same-operation retry after reload; enable task editing/drag/parent controls once a real issue ID is confirmed.
+
 - Display tasks as bars on a timeline.
 - Support optional epic swimlanes with collapsible lane headers.
 - Keep one shared date axis aligned across Gantt lanes.

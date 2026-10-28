@@ -348,7 +348,14 @@
     clearTimeout(toastTimer); const el = $('#toast'); el.textContent = message; el.classList.toggle('error', error); el.hidden = false;
     toastTimer = setTimeout(() => el.hidden = true, error ? 7000 : 2800);
   }
-  function syncText(text, error = false) { $('#sync-status').textContent = text; $('#sync-status').classList.toggle('error', error); }
+  function syncText(text, error = false) {
+    if (!error && ['Synced with Sheets', 'Saved in this browser'].includes(text)) {
+      if (hasPendingSaves()) text = 'Saving…';
+      else if (state.quickQueue.length) text = 'Work item queued…';
+      else if (Object.keys(state.drafts).length || state.bulkDraft || state.bulkEditDraft || state.pendingDuplicate) { text = 'Save unconfirmed'; error = true; }
+    }
+    $('#sync-status').textContent = text; $('#sync-status').classList.toggle('error', error);
+  }
   function setBusy(value) {
     state.busy = value; document.body.classList.toggle('busy', value);
     $$('#issue-form input, #issue-form select, #issue-form textarea, #issue-form button').forEach(el => el.disabled = value);
@@ -621,6 +628,7 @@
         delete state.saveQueues[queueKey];
         delete state.pendingCreateIds[queueKey];
       }
+      syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser');
       queueMicrotask(drainQuickQueue);
     }).catch(() => {});
     return job;
@@ -783,7 +791,8 @@
   function render() {
     if (!state.ready) return;
     const quickEntryState = state.view === 'kanban' ? captureBoardQuickEntries() : null;
-    closeGanttQuickPopover();
+    const ganttEntryState = state.view === 'gantt' ? captureGanttQuickEntry() : null;
+    if (state.view !== 'gantt') closeGanttQuickPopover();
     renderSavedViews();
     renderFilters();
     $$('[data-view]').forEach(el => { const active = el.dataset.view === state.view; el.classList.toggle('active', active); if (el.getAttribute('role') === 'tab') { el.setAttribute('aria-selected', String(active)); el.setAttribute('aria-controls', 'view-content'); } });
@@ -801,8 +810,9 @@
     $('#epic-nav').innerHTML = state.issues.filter(i => i.type === 'Epic').map(i => `<button data-epic="${escape(i.id)}" class="${state.epic === i.id ? 'active' : ''}" title="${escape(i.summary)}"><span class="epic-dot"></span><span class="epic-name">${escape(i.summary)}</span></button>`).join('') || '<span class="nav-caption">No epics yet</span>';
     $('#issue-count').textContent = `${issues.length} of ${state.issues.length} issues`;
     $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Drag row grips or use arrows to reorder siblings, regardless of status. Moving a row switches to Manual order. Click an issue ID for details.', gantt: 'Double-click labels or bars to edit. Drag bars to reschedule; Epic spans follow child schedules.' }[state.view];
-    if (!state.issues.length && !(state.view === 'kanban' && pendingQuickTasks().length)) { $('#view-content').innerHTML = `<div class="empty-state">${icon('stack')}<h2>A fresh start for your next project.</h2><p>Create your first epic, story, task, or bug.</p><button class="button primary" data-new="Backlog">Create your first issue</button></div>`; return; }
-    if (!issues.length && !(state.view === 'kanban' && pendingQuickTasks().length)) { $('#view-content').innerHTML = '<div class="empty-state"><h2>No issues match these filters.</h2><p>Try a different search, or clear the filters to see everything.</p><button class="button secondary" data-clear>Clear filters</button></div>'; return; }
+    const hasPendingRows = ['kanban', 'gantt'].includes(state.view) && pendingQuickTasks().length;
+    if (!state.issues.length && !hasPendingRows) { $('#view-content').innerHTML = `<div class="empty-state">${icon('stack')}<h2>A fresh start for your next project.</h2><p>Create your first epic, story, task, or bug.</p><button class="button primary" data-new="Backlog">Create your first issue</button></div>`; return; }
+    if (!issues.length && !hasPendingRows) { $('#view-content').innerHTML = '<div class="empty-state"><h2>No issues match these filters.</h2><p>Try a different search, or clear the filters to see everything.</p><button class="button secondary" data-clear>Clear filters</button></div>'; return; }
     const content = $('#view-content'), oldScroll = content.querySelector('.board, .table-wrap, .gantt-viewport');
     const scroll = oldScroll ? { left: oldScroll.scrollLeft, top: oldScroll.scrollTop } : null;
     if (state.view === 'kanban') renderBoard(issues);
@@ -811,6 +821,7 @@
     const nextScroll = content.querySelector('.board, .table-wrap, .gantt-viewport');
     if (scroll && nextScroll) { nextScroll.scrollLeft = scroll.left; nextScroll.scrollTop = scroll.top; }
     if (quickEntryState) restoreBoardQuickEntries(quickEntryState);
+    if (ganttEntryState) restoreGanttQuickEntry(ganttEntryState);
   }
   function boardQuickEntryKey(element) { return JSON.stringify([element.closest('.swimlane')?.dataset.epicLane || '', element.closest('.column')?.dataset.status || '']); }
   function captureBoardQuickEntries() {
@@ -841,10 +852,11 @@
     if (delta) window.scrollBy(0, delta);
   }
   function pendingQuickTasks() {
+    const firstRank = state.issues.reduce((max, issue) => Math.max(max, Number(issue.rank) || 0), 0) + 1000;
     return [
-      ...Object.entries(state.drafts).filter(([key, draft]) => key.startsWith('quick-') && !draft.input.id).map(([key, draft]) => ({ id: `pending:${key}`, draftKey: key, summary: draft.input.summary, type: draft.input.type, status: draft.input.status, parentId: draft.input.parentId || '', pendingState: draft.error || !quickSavesInFlight.has(key) ? 'failed' : 'saving', error: draft.error || (!quickSavesInFlight.has(key) ? 'Save is unconfirmed. Retry to check safely.' : '') })),
+      ...Object.entries(state.drafts).filter(([key, draft]) => key.startsWith('quick-') && !draft.input.id).map(([key, draft]) => ({ id: `pending:${key}`, draftKey: key, summary: draft.input.summary, taskTypeId: draft.input.taskTypeId, type: draft.input.type, status: draft.input.status, parentId: draft.input.parentId || '', pendingState: draft.error || !quickSavesInFlight.has(key) ? 'failed' : 'saving', error: draft.error || (!quickSavesInFlight.has(key) ? 'Save is unconfirmed. Retry to check safely.' : '') })),
       ...state.quickQueue.map(item => ({ id: `pending:${item.draftKey}`, draftKey: item.draftKey, summary: item.title, type: item.kind, status: item.status, parentId: item.parentId || '', pendingState: 'queued' }))
-    ];
+    ].map((issue, index) => ({ ...issue, rank: firstRank + index * 1000 }));
   }
   function pendingQuickCard(issue) {
     const label = issue.pendingState === 'failed' ? 'Save unconfirmed' : issue.pendingState === 'queued' ? 'Queued…' : 'Saving…';
@@ -1136,9 +1148,22 @@
   }
   async function createGanttQuickItem(formElement) {
     const title = formElement.elements.summary.value.trim(), parentId = formElement.dataset.parentId, kind = formElement.elements.kind?.value || 'Task';
-    if (!title || !parentId || state.busy) return;
-    try { await persist({ summary: title, type: kind, taskTypeId: defaultTaskTypeId(), status: 'Backlog', priority: 'Medium', parentId }, undefined, `${kind} added`); }
-    catch (error) { notify(error.message, true); }
+    if (!title || !parentId || !state.ready || state.busy) return;
+    const source = document.createElement('input');
+    source.value = title; source.dataset.quickKind = kind; source.dataset.quickParentId = parentId;
+    const draftKey = `quick-${newOperationId()}`; source.dataset.quickDraftKey = draftKey;
+    formElement.elements.summary.value = ''; formElement.elements.summary.focus({ preventScroll: true });
+    let parent = issueById(parentId); const seen = new Set();
+    while (parent && !seen.has(parent.id)) {
+      seen.add(parent.id);
+      if (parent.type === 'Epic') delete state.collapsedEpics[parent.id];
+      if (parent.type === 'Story') delete state.collapsedGanttStories[parent.id];
+      parent = issueById(parent.parentId);
+    }
+    saveUiState();
+    const saving = createQuickTask('Backlog', source);
+    revealGanttPendingRow(draftKey);
+    await saving;
   }
   function showGanttCommentPreview(target) {
     const id = target.dataset.previewId || target.dataset.open || target.dataset.bar, comments = (state.comments[id] || []).slice(-3).reverse();
@@ -1154,6 +1179,27 @@
   }
   function hideGanttCommentPreview() { document.querySelector('.gantt-comment-preview')?.remove(); ganttPreviewTarget?.removeAttribute('aria-describedby'); ganttPreviewTarget = null; }
   function closeGanttQuickPopover() { document.querySelectorAll('.gantt-quick-popover').forEach(popover => popover.remove()); }
+  function revealGanttPendingRow(draftKey) {
+    const viewport = $('.gantt-viewport'), row = $$('.gantt-pending-row').find(row => row.dataset.pendingQuick === draftKey);
+    if (!viewport || !row) return;
+    const box = viewport.getBoundingClientRect(), target = row.getBoundingClientRect(), header = $('.gantt-header')?.offsetHeight || 0;
+    if (target.bottom > box.bottom - 2) viewport.scrollTop += target.bottom - box.bottom + 2;
+    else if (target.top < box.top + header + 2) viewport.scrollTop += target.top - box.top - header - 2;
+  }
+  function captureGanttQuickEntry() {
+    const form = $('[data-gantt-quick-form]');
+    if (!form) return null;
+    const active = form.contains(document.activeElement) ? document.activeElement : null;
+    return { form, active, start: active?.selectionStart, end: active?.selectionEnd, x: window.scrollX, y: window.scrollY };
+  }
+  function restoreGanttQuickEntry(snapshot) {
+    if (!snapshot.form.isConnected) return;
+    if (snapshot.active?.isConnected) {
+      snapshot.active.focus({ preventScroll: true });
+      if (Number.isInteger(snapshot.start)) snapshot.active.setSelectionRange(snapshot.start, snapshot.end);
+    }
+    window.scrollTo(snapshot.x, snapshot.y);
+  }
   function applyGanttLabelWidth(width) {
     state.ganttLabelWidth = clampGanttLabelWidth(width);
     const grid = $('#view-content .gantt-grid'), resizer = $('#view-content .gantt-resizer');
@@ -1164,7 +1210,7 @@
     state.ganttLabelWidth = clampGanttLabelWidth(state.ganttLabelWidth);
     const dayWidth = state.zoom === 'days' ? 38 : 24, days = state.zoom === 'days' ? 56 : 112;
     const start = state.timelineStart, end = C.addDays(start, days - 1), width = dayWidth * days;
-    const positions = new Map();
+    const positions = new Map(), displayIssues = [...issues, ...pendingQuickTasks()];
     const renderTrackContent = (issue, y, schedule = issue, summary = false) => {
       const scheduled = !!schedule && C.validDate(schedule.startDate) && C.validDate(schedule.dueDate) && schedule.dueDate >= schedule.startDate;
       const rawStart = scheduled ? C.dateNumber(schedule.startDate) - C.dateNumber(start) : 0;
@@ -1190,6 +1236,10 @@
     };
     const renderTrack = (issue, y, schedule = issue, summary = false) => `<div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px">${renderTrackContent(issue, y, schedule, summary)}</div>`;
     const renderRows = (items, topOffset, laneParentId = '') => ganttHierarchyRows(items, laneParentId).map(({ issue, depth }, row) => {
+      if (issue.draftKey) {
+        const label = issue.pendingState === 'failed' ? 'Save unconfirmed' : issue.pendingState === 'queued' ? 'Queued…' : 'Saving…';
+        return `<div class="gantt-row gantt-pending-row ${issue.pendingState}" data-pending-quick="${escape(issue.draftKey)}" aria-busy="${issue.pendingState !== 'failed'}"><div class="gantt-row-label" style="--row-depth:${depth}">${typeIcon(issue.type)}<span class="gantt-label-copy"><strong>${label}</strong><span class="gantt-label-summary">${escape(issue.summary)}</span></span>${issue.error ? `<button type="button" class="button subtle" data-retry-quick="${escape(issue.draftKey)}">Retry save</button>` : ''}</div><div class="gantt-resize-gutter" aria-hidden="true"></div><div class="gantt-track" style="width:${width}px;--day-width:${dayWidth}px"><span class="gantt-pending-message">${escape(issue.error || 'Syncing with Sheets in the background')}</span></div></div>`;
+      }
       const summary = issue.type === 'Epic';
       const schedule = summary ? C.epicScheduleRange(issue.id, state.issues) : issue;
       const storyChildCount = issue.type === 'Story' ? items.filter(child => child.parentId === issue.id).length : 0;
@@ -1200,7 +1250,7 @@
     }).join('');
     let rows = '', rowsHeight = 0;
     if (state.swimlanes) {
-      rows = epicLanes(issues).map(lane => {
+      rows = epicLanes(displayIssues).map(lane => {
         const collapsed = laneCollapsed(lane);
         const topOffset = rowsHeight;
         const epic = lane.id ? issueById(lane.id) : null;
@@ -1212,8 +1262,8 @@
         return `<section class="gantt-swimlane${collapsed ? ' collapsed' : ''}" data-epic-lane="${escape(lane.id)}">${epicHeader}${laneRows}</section>`;
       }).join('');
     } else {
-      rows = renderRows(issues, 0);
-      rowsHeight = ganttHierarchyRows(issues).length * 45;
+      rows = renderRows(displayIssues, 0);
+      rowsHeight = ganttHierarchyRows(displayIssues).length * 45;
     }
     let links = '';
     issues.forEach(issue => C.split(issue.dependencies).forEach(id => {
@@ -1451,7 +1501,7 @@
     if (state.view === 'sheet' && sheetMove) { moveSheetWithKeyboard(sheetMove.dataset.sheetMoveId, sheetMove.dataset.sheetMove); return; }
     const storyLabel = event.target.closest('.gantt-row-label.has-story-toggle');
     if (ganttStoryClickTimer && (!storyLabel || storyLabel.dataset.open !== ganttStoryClickTimer.id || event.detail > 1)) cancelGanttStoryClick();
-    if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover();
+    if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button, [data-retry-quick]')) closeGanttQuickPopover();
     const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-sheet-manual], [data-sheet-column-move], [data-bulk-edit-open], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-toggle-sheet-parent], [data-gantt-add]');
     if (!target) return;
     if (target.hasAttribute('data-bulk-edit-open')) openBulkEdit();
@@ -1491,7 +1541,7 @@
     else openIssue(target.dataset.open || target.dataset.issue || target.dataset.bar);
   });
   document.addEventListener('submit', event => { const formElement = event.target.closest('[data-gantt-quick-form]'); if (!formElement) return; event.preventDefault(); createGanttQuickItem(formElement); });
-  document.addEventListener('click', event => { if (!event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover(); });
+  document.addEventListener('click', event => { if (!event.target.closest('.gantt-quick-popover, .gantt-add-button, [data-retry-quick]')) closeGanttQuickPopover(); });
   document.addEventListener('keydown', event => { if (event.key === 'Escape') closeGanttQuickPopover(); });
   $('#view-content').addEventListener('dblclick', event => {
     if (state.view !== 'gantt') return;
