@@ -287,6 +287,29 @@ var TrackerCore = (function () {
     if (!configured.length) return ['algo', 'data', 'requirements', 'bug'].map(function (id) { return taskTypePresentation(id, []); });
     return configured.map(function (item) { var id = String(item.valueType === 'json' ? item.key : item.value).trim().toLowerCase(); return taskTypePresentation(id, settings); });
   }
+  function duplicateUndoItems(issues, duplicateResult, expectedItems, comments) {
+    if (!duplicateResult || !Array.isArray(duplicateResult.items) || !duplicateResult.items.length) throw new Error('The duplicate operation could not be found. Refresh before undoing it.');
+    if (!Array.isArray(expectedItems) || !expectedItems.length || expectedItems.length > 100) throw new Error('Invalid duplicate undo request.');
+    var created = duplicateResult.items.map(function (entry) { return entry.issue; }), expectedById = new Map();
+    expectedItems.forEach(function (entry) {
+      var id = String(entry && entry.id || '');
+      if (!id || expectedById.has(id)) throw new Error('Duplicate undo items must have unique issue IDs.');
+      expectedById.set(id, String(entry.expectedVersion || ''));
+    });
+    if (expectedById.size !== created.length || created.some(function (issue) { return expectedById.get(issue.id) !== issue.version; })) throw new Error('Duplicate undo does not match the original copied issues.');
+    var selected = new Set(created.map(function (issue) { return issue.id; }));
+    created.forEach(function (copy) {
+      var current = issues.find(function (issue) { return issue.id === copy.id; });
+      if (!current) throw new Error(copy.id + ' no longer exists. Refresh before undoing the duplicate.');
+      if (current.version !== copy.version) throw new Error(copy.id + ' changed after duplication. Refresh before undoing it.');
+    });
+    var externalReferences = issues.filter(function (issue) {
+      return !selected.has(issue.id) && (selected.has(issue.parentId) || split(issue.dependencies).some(function (id) { return selected.has(id); }));
+    });
+    if (externalReferences.length) throw new Error('Other issues now reference these copies: ' + externalReferences.map(function (issue) { return issue.id; }).join(', ') + '. Remove those links before undoing the duplicate.');
+    if ((comments || []).some(function (comment) { return selected.has(comment.taskId); })) throw new Error('Comments were added to these copies. Keep the issues to preserve that activity.');
+    return created;
+  }
   function csv(issues) {
     function cell(v) { v = String(v == null ? '' : v); if (/^[\s]*[=+@-]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
     return '\uFEFF' + [fields.map(function (f) { return cell(f.label); }).join(',')].concat(issues.map(function (i) { return fields.map(function (f) { return cell(i[f.key]); }).join(','); })).join('\r\n');
@@ -311,7 +334,7 @@ var TrackerCore = (function () {
       return Object.assign(blank(), { id: 'PRJ-' + (n + 1), type: s[0], parentId: s[1], summary: s[2], status: s[3], priority: s[4], assignee: s[5], reporter: 'Alex Morgan', startDate: addDays(today, s[6]), dueDate: addDays(today, s[7]), progress: s[8], labels: s[9], dependencies: s[10], estimate: s[11], timeSpent: Math.round(s[11] * s[8] / 100), description: 'Sample issue. Replace this description with context, acceptance criteria, and links.', sprint: 'Sprint 01', completedDate: s[3] === 'Done' ? addDays(today, s[7]) : '', createdAt: today + 'T09:00:00.000Z', updatedAt: today + 'T09:00:00.000Z', rank: (n + 1) * 1000 });
     });
   }
-  return { types: types, statuses: statuses, priorities: priorities, fields: fields, blank: blank, prepare: prepare, validate: validate, canDelete: canDelete, epicScheduleRange: epicScheduleRange, sorted: sorted, taskTypePresentation: taskTypePresentation, taskTypeDefinitions: taskTypeDefinitions, split: split, dateNumber: dateNumber, addDays: addDays, validDate: validDate, csv: csv, sample: sample };
+  return { types: types, statuses: statuses, priorities: priorities, fields: fields, blank: blank, prepare: prepare, validate: validate, canDelete: canDelete, duplicateUndoItems: duplicateUndoItems, epicScheduleRange: epicScheduleRange, sorted: sorted, taskTypePresentation: taskTypePresentation, taskTypeDefinitions: taskTypeDefinitions, split: split, dateNumber: dateNumber, addDays: addDays, validDate: validDate, csv: csv, sample: sample };
 })();
 if (typeof module !== 'undefined') module.exports = TrackerCore;
 
@@ -436,7 +459,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     localStorage.setItem(savedViewsStorageKey, JSON.stringify(state.savedViews)); renderSavedViews(); notify('Saved view deleted');
   }
   function saveUndoState() { localStorage.setItem(undoStorageKey, JSON.stringify(state.undoStack.slice(-50))); updateUndoControl(); }
-  function updateUndoControl() { const button = $('#undo-last-action'); if (button) { const entry = state.undoStack.at(-1); button.disabled = !entry; button.title = entry ? (entry.kind === 'bulk' ? `Undo last bulk change to ${entry.items.length} issues` : `Undo last saved change to ${entry.id}`) : 'No saved issue changes to undo'; } }
+  function updateUndoControl() { const button = $('#undo-last-action'); if (button) { const entry = state.undoStack.at(-1); button.disabled = !entry; button.title = entry ? (entry.kind === 'duplicate' ? `Undo duplication of ${entry.items.length} issues` : entry.kind === 'bulk' ? `Undo last bulk change to ${entry.items.length} issues` : `Undo last saved change to ${entry.id}`) : 'No saved issue changes to undo'; } }
   function undoSnapshot(issue) { return Object.fromEntries([...C.fields.map(field => [field.key, issue[field.key]]), ['taskTypeId', issue.taskTypeId]]); }
   function undoBusinessKeys() { return [...C.fields.map(field => field.key), 'taskTypeId'].filter(key => !['id', 'createdAt', 'updatedAt', 'completedDate'].includes(key)); }
   function sameUndoValues(left, right) { return undoBusinessKeys().every(key => String(left?.[key] ?? '') === String(right?.[key] ?? '')); }
@@ -575,6 +598,24 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       db.issues = projected;
       const result = { rootId: copies[0].issue.id, items: copies };
       receipts[operationId] = result; localStorage.setItem(storageKey, JSON.stringify(db)); localStorage.setItem(localReceiptStorageKey, JSON.stringify(receipts));
+      return result;
+    }
+    if (method === 'undoDuplicateIssues') {
+      const db = getLocal(), [duplicateOperationId, expectedItems, undoOperationId] = args;
+      if (!duplicateOperationId || !undoOperationId) throw new Error('Duplicate and undo operation IDs are required.');
+      const previous = db.duplicateUndoReceipts?.[undoOperationId];
+      if (previous) {
+        if (previous.duplicateOperationId !== duplicateOperationId) throw new Error('This undo operation ID belongs to a different duplicate.');
+        return previous;
+      }
+      const receipts = JSON.parse(localStorage.getItem(localReceiptStorageKey) || '{}');
+      const copies = C.duplicateUndoItems(db.issues, receipts[duplicateOperationId], expectedItems, db.comments);
+      const ids = copies.map(issue => issue.id), selected = new Set(ids);
+      db.issues = db.issues.filter(issue => !selected.has(issue.id));
+      const result = { duplicateOperationId, ids, archived: false };
+      db.duplicateUndoReceipts = { ...db.duplicateUndoReceipts, [undoOperationId]: result };
+      // The removal and its retry receipt share one localStorage write.
+      localStorage.setItem(storageKey, JSON.stringify(db));
       return result;
     }
     if (method === 'updateIssuesBatch') {
@@ -924,6 +965,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (!entry) return;
     if (state.busy || hasPendingSaves() || dialog.open || $('#bulk-edit-dialog').open || Object.keys(state.drafts).length || state.quickQueue.length || state.bulkDraft || state.bulkEditDraft || state.pendingDuplicate) { notify('Finish or discard pending edits before undoing.', true); return; }
     if (entry.kind === 'bulk') { await undoBulkCommand(entry); return; }
+    if (entry.kind === 'duplicate') { await undoDuplicateCommand(entry); return; }
     const current = issueById(entry.id);
     if (!current || current.version !== entry.afterVersion) { notify('This issue changed after the saved action. Refresh before undoing it.', true); return; }
     try {
@@ -934,6 +976,17 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       if (previous) previous.afterVersion = undone.version;
       saveUndoState();
     } catch (error) { notify(`Could not undo: ${error.message}`, true); }
+  }
+  async function undoDuplicateCommand(entry) {
+    if (!entry.undoOperationId) { entry.undoOperationId = `undo-duplicate-${newOperationId()}`; saveUndoState(); }
+    state.activeSaves++; setBusy(true); syncText('Undoing duplication…');
+    try {
+      const result = await rpc('undoDuplicateIssues', entry.operationId, entry.items, entry.undoOperationId);
+      const removed = new Set(result.ids);
+      state.issues = state.issues.filter(issue => !removed.has(issue.id));
+      state.undoStack.pop(); saveUndoState(); render(); notify(`Duplication undone for ${result.ids.length} issues`);
+    } catch (error) { notify(`Could not undo duplication: ${error.message}`, true); }
+    finally { state.activeSaves = Math.max(0, state.activeSaves - 1); setBusy(false); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); drainQuickQueue(); }
   }
   async function undoBulkCommand(entry) {
     const currents = entry.items.map(item => issueById(item.id));
@@ -1491,7 +1544,13 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     try {
       const result = await rpc('duplicateIssue', current.id, current.version, includeSubtasks, state.pendingDuplicate.operationId);
       const copies = (result.items || []).map(entry => entry.issue);
-      state.issues = [...state.issues, ...copies]; state.pendingDuplicate = null; localStorage.removeItem(duplicateDraftStorageKey);
+      const copiedIds = new Set(copies.map(issue => issue.id));
+      state.issues = [...state.issues.filter(issue => !copiedIds.has(issue.id)), ...copies];
+      if (!state.undoStack.some(entry => entry.kind === 'duplicate' && entry.operationId === state.pendingDuplicate.operationId)) {
+        state.undoStack.push({ kind: 'duplicate', id: result.rootId, operationId: state.pendingDuplicate.operationId, items: copies.map(issue => ({ id: issue.id, expectedVersion: issue.version })), savedAt: new Date().toISOString() });
+        state.undoStack = state.undoStack.slice(-50); saveUndoState();
+      }
+      state.pendingDuplicate = null; localStorage.removeItem(duplicateDraftStorageKey);
       dialog.close(); edited = null; formSession++; setBusy(false); render(); openIssue(result.rootId);
       notify(`Duplicated ${copies.length} ${copies.length === 1 ? 'issue' : 'issues'}`);
     } catch (failure) {

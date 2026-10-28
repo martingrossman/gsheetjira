@@ -228,3 +228,67 @@ test('formula-like text is stored as literal text', () => {
   const h = harness(); const issue = C.prepare({ summary: '=IMPORTXML("url", "path")' }, null, '2026-10-27', '2026-10-27T10:00:00Z');
   const row = h.api.toRow_(issue, h.book); assert.ok(row[3].startsWith("'="));
 });
+
+function duplicateUndoFixture() {
+  const h = harness(), receipts = new Map(), events = [];
+  h.api.SheetFlowHistory = {
+    findReceipt: (_, id) => id && receipts.has(id) ? { result: receipts.get(id) } : null,
+    receipt: (_, id, result) => { if (id) receipts.set(id, result); }, record: (_, event) => events.push(event)
+  };
+  const source = h.api.saveIssue({ summary: 'Original story', type: 'Story' });
+  h.api.saveIssue({ summary: 'Original child', parentId: source.id });
+  const duplicate = h.api.duplicateIssue(source.id, source.version, true, 'duplicate-tree');
+  const expected = duplicate.items.map(({issue}) => ({ id: issue.id, expectedVersion: issue.version }));
+  return { ...h, receipts, events, duplicate, expected };
+}
+
+test('duplicate undo removes only the copied tree, audits each removal, and replays safely', () => {
+  const h = duplicateUndoFixture();
+  const result = h.api.undoDuplicateIssues('duplicate-tree', h.expected, 'undo-tree');
+  assert.equal(result.ids.length, 2); assert.equal(result.archived, false);
+  assert.equal(h.api.getProject().issues.length, 2);
+  assert.equal(h.events.filter(event => event.details?.undoDuplicate === 'duplicate-tree').length, 2);
+  assert.equal(h.api.undoDuplicateIssues('duplicate-tree', h.expected, 'undo-tree'), result);
+  assert.throws(() => h.api.undoDuplicateIssues('other-duplicate', h.expected, 'undo-tree'), /different duplicate/);
+  assert.ok(h.balanced());
+});
+
+test('duplicate undo rejects stale, incomplete, forged, and duplicate revision lists before writes', () => {
+  const h = duplicateUndoFixture();
+  for (const items of [[], h.expected.slice(0, 1), [h.expected[0], h.expected[0]], h.expected.map(item => ({...item, expectedVersion:'forged'}))]) {
+    assert.throws(() => h.api.undoDuplicateIssues('duplicate-tree', items, 'invalid-undo'), /Invalid|match|unique/);
+    assert.equal(h.api.getProject().issues.length, 4);
+  }
+  const child = h.duplicate.items[1].issue;
+  h.api.saveIssue({id:child.id, summary:'Later work'}, child.version);
+  assert.throws(() => h.api.undoDuplicateIssues('duplicate-tree', h.expected, 'stale-undo'), /changed after duplication/);
+  assert.equal(h.api.getProject().issues.length, 4); assert.ok(h.balanced());
+});
+
+for (const link of ['parentId', 'dependencies']) test('duplicate undo preserves copies referenced by an external ' + link, () => {
+  const h = duplicateUndoFixture();
+  h.api.saveIssue({summary:'Later linked work', [link]:h.duplicate.rootId});
+  assert.throws(() => h.api.undoDuplicateIssues('duplicate-tree', h.expected, 'linked-undo'), /Other issues now reference/);
+  assert.equal(h.api.getProject().issues.length, 5);
+});
+
+test('duplicate undo protects comments and requires write authorization', () => {
+  const h = duplicateUndoFixture();
+  h.api.SheetFlowComments = {read: () => [{taskId:h.duplicate.rootId,body:'Later discussion'}]};
+  assert.throws(() => h.api.undoDuplicateIssues('duplicate-tree', h.expected, 'comment-undo'), /Comments were added/);
+  h.api.SheetFlowAuth = {require: () => {throw new Error('AUTH_FORBIDDEN');}};
+  assert.throws(() => h.api.undoDuplicateIssues('duplicate-tree', h.expected, 'forbidden-undo'), /AUTH_FORBIDDEN/);
+  assert.equal(h.rows.length, 5); assert.ok(h.balanced());
+});
+
+test('failed legacy duplicate undo restores removed copies and can be retried', () => {
+  const h = duplicateUndoFixture(), remove = h.sheet.deleteRow;
+  let calls = 0;
+  h.sheet.deleteRow = row => { if (++calls === 2) throw new Error('Injected delete failure'); return remove(row); };
+  assert.throws(() => h.api.undoDuplicateIssues('duplicate-tree', h.expected, 'retry-undo'), /Written changes were rolled back/);
+  assert.equal(h.api.getProject().issues.length, 4);
+  h.expected.forEach(item => assert.equal(h.api.getProject().issues.find(issue => issue.id === item.id).version, item.expectedVersion));
+  h.sheet.deleteRow = remove;
+  assert.equal(h.api.undoDuplicateIssues('duplicate-tree', h.expected, 'retry-undo').ids.length, 2);
+  assert.ok(h.balanced());
+});

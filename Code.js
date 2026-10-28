@@ -241,6 +241,59 @@ function duplicateIssue(id, expectedVersion, includeSubtasks, operationId) {
     return result;
   });
 }
+/** Remove a duplicate issue tree only when every copy still has its original revision. */
+function undoDuplicateIssues(duplicateOperationId, expectedItems, undoOperationId) {
+  return withLock_(function () {
+    authorizationService_().require('write');
+    duplicateOperationId = String(duplicateOperationId || ''); undoOperationId = String(undoOperationId || '');
+    if (!duplicateOperationId || !undoOperationId) throw new Error('Duplicate and undo operation IDs are required.');
+    if (!Array.isArray(expectedItems) || !expectedItems.length || expectedItems.length > 100) throw new Error('Invalid duplicate undo request.');
+    var book = getBook_(), history = historyService_(), previousUndo = history.findReceipt(book, undoOperationId);
+    if (previousUndo) {
+      if (previousUndo.result.duplicateOperationId !== duplicateOperationId) throw new Error('This undo operation ID belongs to a different duplicate.');
+      return previousUndo.result;
+    }
+    var duplicateReceipt = history.findReceipt(book, duplicateOperationId);
+    var issues = readIssues_(book), comments = typeof SheetFlowComments !== 'undefined' ? SheetFlowComments.read(book) : [];
+    var created = TrackerCore.duplicateUndoItems(issues, duplicateReceipt && duplicateReceipt.result, expectedItems, comments);
+    var versioned = versionedRepositoryActive_(book), ordered = created.slice().reverse(), changed = [];
+    try {
+      if (versioned) {
+        ordered.forEach(function (copy) { changed.push(copy.id); archiveVersionedIssue_(book, issues.find(function (issue) { return issue.id === copy.id; })); });
+      } else {
+        var legacySheet = book.getSheetByName('Issues');
+        ordered.map(function (copy) { return issues.find(function (issue) { return issue.id === copy.id; }); }).sort(function (a, b) { return b._row - a._row; }).forEach(function (issue) { legacySheet.deleteRow(issue._row); changed.push(issue.id); });
+      }
+      SpreadsheetApp.flush();
+    } catch (writeError) {
+      var rollbackErrors = [];
+      if (versioned) {
+        changed.slice().reverse().forEach(function (id) {
+          try { var original = issues.find(function (issue) { return issue.id === id; }); SheetFlowRepository.upsert(book, original._storageTab, original._record); }
+          catch (rollbackError) { rollbackErrors.push(rollbackError && rollbackError.message ? rollbackError.message : String(rollbackError)); }
+        });
+      } else {
+        changed.slice().reverse().forEach(function (id) {
+          try {
+            var original = issues.find(function (issue) { return issue.id === id; });
+            writeIssue_(book, original, null);
+            if (typeof SheetFlowSettings !== 'undefined') SheetFlowSettings.setTaskType(book, original.id, original.taskTypeId);
+          } catch (rollbackError) { rollbackErrors.push(rollbackError && rollbackError.message ? rollbackError.message : String(rollbackError)); }
+        });
+      }
+      SpreadsheetApp.flush();
+      throw new Error('Duplicate undo failed. ' + (rollbackErrors.length ? 'Some copies could not be restored; refresh and review the project. ' : 'Written changes were rolled back. ') + (writeError && writeError.message ? writeError.message : String(writeError)));
+    }
+    var archivedIssues = versioned ? readVersionedIssues_(book, true) : [], ids = created.map(function (issue) { return issue.id; });
+    created.forEach(function (copy) {
+      var archived = versioned && archivedIssues.find(function (issue) { return issue.id === copy.id; });
+      history.record(book, { operationId: undoOperationId + ':' + copy.id, entityId: copy.id, eventKind: versioned ? 'archived' : 'deleted', beforeRevision: copy.version, afterRevision: archived && archived.version || '', changedFields: [], details: { source: 'app', undoDuplicate: duplicateOperationId } });
+    });
+    var result = { duplicateOperationId: duplicateOperationId, ids: ids, archived: versioned };
+    history.receipt(book, undoOperationId, result);
+    return result;
+  });
+}
 function saveIssueLocked_(book, input, expectedVersion) {
   var operationId = input && input.operationId, history = historyService_();
   var previousReceipt = history.findReceipt(book, operationId);

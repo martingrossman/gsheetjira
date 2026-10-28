@@ -4,7 +4,7 @@ A Jira-style project tracker using **Google Sheets as its shared data source**, 
 
 ## Project setup
 
-Requires Node.js 18 or newer. This repository has no npm dependencies to install.
+Requires Node.js 20 or newer for the development tools and an installed Microsoft Edge for browser tests. The built app has no external runtime dependencies; Playwright is a development-only dependency.
 
 Clone the repository and enter the project directory:
 
@@ -16,6 +16,7 @@ cd gsheetjira
 Run the build and test checks before making changes:
 
 ```sh
+npm ci
 npm run check
 ```
 
@@ -39,7 +40,8 @@ Useful commands:
 | --- | --- |
 | `npm run build` | Validate the JavaScript and generate `CoreScript.html` and `dist/index.html`. |
 | `npm test` | Run the Node test suite. |
-| `npm run check` | Run the build and the full test suite. |
+| `npm run check` | Run the build and Node test suite. |
+| `npm run test:browser` | Build and run the isolated Playwright regression suite in Microsoft Edge. |
 | `npm start` | Serve the standalone demo at `http://127.0.0.1:4173`. |
 | `clasp show-file-status` | Compare local Apps Script files with the configured script project. |
 | `clasp push` | Upload the Apps Script source files selected by `.claspignore`. |
@@ -192,7 +194,9 @@ To add issues directly in Sheets, enter or paste a **Summary** in column D and f
 
 App edits save to Sheets; detail text autosaves after a short pause and dates/selects save immediately. Client saves queue per issue while independent issues can save in parallel. A script lock serializes server writes. A content hash detects stale edits, including changes made directly in Sheets even if their timestamp has not changed. Failed saves keep a local draft and can be retried with the same operation ID. On a detected revision conflict, **Compare with latest** shows field differences and offers to load the latest copy; **Discard draft** removes the local copy after confirmation. Pasted batches keep per-item operation IDs across retries. Automatic merging is not implemented.
 
-**Undo** reverses the most recent acknowledged edit, reorder, move, or schedule change from this browser, provided the issue revision has not changed since. It records the reversal as a new server change. Create, batch, comment, and archive actions are not undoable yet.
+**Undo** reverses the most recent acknowledged edit, reorder, move, schedule change, bulk edit, or duplication from this browser. Close the issue editor before choosing Undo. Field and bulk changes require matching revisions and record the reversal as a new server change.
+
+Duplication undo removes the complete copied tree only while every copy retains its original revision and no copy has received comments or new references from other issues. V2 archives the copies and records history; legacy storage and the local demo remove them. Originals stay intact. The undo command survives reloads and reuses its operation ID after an uncertain response. Even an edit subsequently reversed produces a new revision and prevents duplication undo. Create, paste-to-create batch, comment, and general archive/restore undo remain open. Apps Script data writes, history, and receipts are not transactional; failures while recording history/receipts still require refresh and review.
 
 The cloud app refreshes every 45 seconds while visible and not editing, or immediately using **Refresh**. This is polling, not simultaneous live cursors. Native Sheet edits are not transactional with script writes. Avoid editing the same row at precisely the same time in Sheets and the web app.
 
@@ -207,6 +211,15 @@ npm run check
 ```
 
 This builds the standalone HTML, regenerates the browser model, syntax-checks browser/server JavaScript, and runs the Node suite. Tests cover migration repeatability/cutover/rollback, v2 repository CRUD and archive/restore, authorization rules, hierarchy/dependency cycles, dates, direct-edit validation, stale edits, row sorting, ID allocation, CSV escaping, and setup behavior. Server tests use an in-memory Apps Script service mock; they do not replace the separate live test-workbook smoke test.
+
+Run the automated browser checks separately:
+
+```sh
+npm ci
+npm run test:browser
+```
+
+`playwright.config.mjs` explicitly uses `channel: 'msedge'`. If Edge is missing, install it with `npx playwright install msedge` (`npx.cmd` in restricted PowerShell). The suite builds and serves the demo on port 4174, gives each test a fresh browser context and synthetic project, and covers single/tree duplication, reset fields, undo persistence, later edits/links/comments, and retry after a simulated lost acknowledgement. It never uses Google credentials or a live workbook. Failure traces appear in `test-results/`. The regression workflow runs the build, Node tests, and Edge tests on pushes and pull requests; GitHub execution is verified separately from local results.
 
 The local browser workflow was also exercised for creation, Kanban dragging, inline sheet edits, Gantt dragging/resizing, persistence across reloads, filters, validation, CSV download, and mobile layouts. Live Google authorization, native Sheet formatting, and the deployed Apps Script runtime still need a smoke test after deployment.
 

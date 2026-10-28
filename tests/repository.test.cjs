@@ -38,6 +38,7 @@ function harness() {
     PropertiesService: { getScriptProperties: () => ({ getProperty: key => properties.get(key) || '', setProperty: (key, value) => properties.set(key, String(value)) }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     Utilities: {
+      getUuid: () => crypto.randomUUID(),
       formatDate: (date, zone, format) => format === 'yyyy-MM-dd' ? date.toLocaleDateString('en-CA', { timeZone: zone }) : date.toISOString(),
       parseDate: value => new Date(String(value).length === 10 ? value + 'T00:00:00.000Z' : value),
       DigestAlgorithm: { SHA_256: 'sha256' }, computeDigest: (_, value) => crypto.createHash('sha256').update(value).digest(),
@@ -169,4 +170,58 @@ test('issue duplication preserves hierarchy through the active versioned reposit
   assert.equal(issues.find(issue => issue.id === result.items[1].issue.id).parentId, result.rootId);
   assert.equal(issues.find(issue => issue.id === result.items[2].issue.id).parentId, result.items[1].issue.id);
   assert.equal(issues.filter(issue => issue.type === 'Epic').length, 2);
+});
+
+function versionedDuplicateUndoFixture() {
+  const h = harness(), receipts = new Map(), events = [];
+  h.api.SheetFlowHistory = {
+    findReceipt: (_, id) => id && receipts.has(id) ? {result:receipts.get(id)} : null,
+    receipt: (_, id, result) => { if (id) receipts.set(id,result); }, record: (_, event) => events.push(event)
+  };
+  addRecord(h.tabs['Projects and Epics'], {ID:'PROJECT-1','Entity Kind':'Project',Title:'Project',Active:true,Revision:1});
+  const epic = h.api.saveIssue({summary:'Original epic',type:'Epic'});
+  const story = h.api.saveIssue({summary:'Original story',type:'Story',parentId:epic.id});
+  h.api.saveIssue({summary:'Original task',parentId:story.id});
+  const duplicate = h.api.duplicateIssue(epic.id,epic.version,true,'v2-tree');
+  const expected = duplicate.items.map(({issue})=>({id:issue.id,expectedVersion:issue.version}));
+  return {...h,duplicate,expected,receipts,events};
+}
+
+test('v2 duplicate undo archives the complete copied hierarchy and safely replays', () => {
+  const h = versionedDuplicateUndoFixture();
+  const result = h.api.undoDuplicateIssues('v2-tree',h.expected,'v2-undo');
+  assert.equal(result.archived,true); assert.equal(result.ids.length,3);
+  assert.equal(h.api.getProject().issues.length,3);
+  const archived = h.api.readVersionedIssues_(h.book,true).filter(issue=>result.ids.includes(issue.id));
+  assert.equal(archived.length,3); assert.ok(archived.every(issue=>issue._archivedAt));
+  assert.equal(h.events.filter(event=>event.details?.undoDuplicate==='v2-tree' && event.eventKind==='archived').length,3);
+  assert.equal(h.api.undoDuplicateIssues('v2-tree',h.expected,'v2-undo'),result);
+});
+
+test('failed v2 duplicate undo restores original revisions even after a partially applied write', () => {
+  const h = versionedDuplicateUndoFixture(), upsert = h.api.SheetFlowRepository.upsert;
+  let calls=0;
+  h.api.SheetFlowRepository.upsert = (...args) => { const result=upsert(...args); if (++calls===2) throw new Error('Injected partial write'); return result; };
+  assert.throws(()=>h.api.undoDuplicateIssues('v2-tree',h.expected,'v2-retry'), /Written changes were rolled back/);
+  assert.equal(h.api.getProject().issues.length,6);
+  h.expected.forEach(item=>assert.equal(h.api.getProject().issues.find(issue=>issue.id===item.id).version,item.expectedVersion));
+  assert.equal(h.receipts.has('v2-retry'),false);
+  h.api.SheetFlowRepository.upsert=upsert;
+  assert.equal(h.api.undoDuplicateIssues('v2-tree',h.expected,'v2-retry').ids.length,3);
+});
+
+test('duplicate undo uses persisted history receipts after the history service reloads', () => {
+  const h = harness(), historySource = fs.readFileSync(require.resolve('../History.js'), 'utf8');
+  vm.runInContext(historySource, h.api);
+  addRecord(h.tabs['Projects and Epics'], { ID: 'PROJECT-1', 'Entity Kind': 'Project', Title: 'Project', Active: true, Revision: 1 });
+  const source = h.api.saveIssue({ summary: 'Persistent receipt source' });
+  const duplicate = h.api.duplicateIssue(source.id, source.version, false, 'persistent-copy');
+  const expected = duplicate.items.map(({ issue }) => ({ id: issue.id, expectedVersion: issue.version }));
+  const undone = h.api.undoDuplicateIssues('persistent-copy', expected, 'persistent-undo');
+  const rows = h.tabs['Change History'].rows.length;
+  vm.runInContext(historySource, h.api);
+  const replayed = h.api.undoDuplicateIssues('persistent-copy', expected, 'persistent-undo');
+  assert.equal(JSON.stringify(replayed), JSON.stringify(undone));
+  assert.equal(h.tabs['Change History'].rows.length, rows);
+  assert.equal(h.api.getProject().issues.length, 1);
 });

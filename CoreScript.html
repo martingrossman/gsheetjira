@@ -145,6 +145,29 @@ var TrackerCore = (function () {
     if (!configured.length) return ['algo', 'data', 'requirements', 'bug'].map(function (id) { return taskTypePresentation(id, []); });
     return configured.map(function (item) { var id = String(item.valueType === 'json' ? item.key : item.value).trim().toLowerCase(); return taskTypePresentation(id, settings); });
   }
+  function duplicateUndoItems(issues, duplicateResult, expectedItems, comments) {
+    if (!duplicateResult || !Array.isArray(duplicateResult.items) || !duplicateResult.items.length) throw new Error('The duplicate operation could not be found. Refresh before undoing it.');
+    if (!Array.isArray(expectedItems) || !expectedItems.length || expectedItems.length > 100) throw new Error('Invalid duplicate undo request.');
+    var created = duplicateResult.items.map(function (entry) { return entry.issue; }), expectedById = new Map();
+    expectedItems.forEach(function (entry) {
+      var id = String(entry && entry.id || '');
+      if (!id || expectedById.has(id)) throw new Error('Duplicate undo items must have unique issue IDs.');
+      expectedById.set(id, String(entry.expectedVersion || ''));
+    });
+    if (expectedById.size !== created.length || created.some(function (issue) { return expectedById.get(issue.id) !== issue.version; })) throw new Error('Duplicate undo does not match the original copied issues.');
+    var selected = new Set(created.map(function (issue) { return issue.id; }));
+    created.forEach(function (copy) {
+      var current = issues.find(function (issue) { return issue.id === copy.id; });
+      if (!current) throw new Error(copy.id + ' no longer exists. Refresh before undoing the duplicate.');
+      if (current.version !== copy.version) throw new Error(copy.id + ' changed after duplication. Refresh before undoing it.');
+    });
+    var externalReferences = issues.filter(function (issue) {
+      return !selected.has(issue.id) && (selected.has(issue.parentId) || split(issue.dependencies).some(function (id) { return selected.has(id); }));
+    });
+    if (externalReferences.length) throw new Error('Other issues now reference these copies: ' + externalReferences.map(function (issue) { return issue.id; }).join(', ') + '. Remove those links before undoing the duplicate.');
+    if ((comments || []).some(function (comment) { return selected.has(comment.taskId); })) throw new Error('Comments were added to these copies. Keep the issues to preserve that activity.');
+    return created;
+  }
   function csv(issues) {
     function cell(v) { v = String(v == null ? '' : v); if (/^[\s]*[=+@-]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
     return '\uFEFF' + [fields.map(function (f) { return cell(f.label); }).join(',')].concat(issues.map(function (i) { return fields.map(function (f) { return cell(i[f.key]); }).join(','); })).join('\r\n');
@@ -169,7 +192,7 @@ var TrackerCore = (function () {
       return Object.assign(blank(), { id: 'PRJ-' + (n + 1), type: s[0], parentId: s[1], summary: s[2], status: s[3], priority: s[4], assignee: s[5], reporter: 'Alex Morgan', startDate: addDays(today, s[6]), dueDate: addDays(today, s[7]), progress: s[8], labels: s[9], dependencies: s[10], estimate: s[11], timeSpent: Math.round(s[11] * s[8] / 100), description: 'Sample issue. Replace this description with context, acceptance criteria, and links.', sprint: 'Sprint 01', completedDate: s[3] === 'Done' ? addDays(today, s[7]) : '', createdAt: today + 'T09:00:00.000Z', updatedAt: today + 'T09:00:00.000Z', rank: (n + 1) * 1000 });
     });
   }
-  return { types: types, statuses: statuses, priorities: priorities, fields: fields, blank: blank, prepare: prepare, validate: validate, canDelete: canDelete, epicScheduleRange: epicScheduleRange, sorted: sorted, taskTypePresentation: taskTypePresentation, taskTypeDefinitions: taskTypeDefinitions, split: split, dateNumber: dateNumber, addDays: addDays, validDate: validDate, csv: csv, sample: sample };
+  return { types: types, statuses: statuses, priorities: priorities, fields: fields, blank: blank, prepare: prepare, validate: validate, canDelete: canDelete, duplicateUndoItems: duplicateUndoItems, epicScheduleRange: epicScheduleRange, sorted: sorted, taskTypePresentation: taskTypePresentation, taskTypeDefinitions: taskTypeDefinitions, split: split, dateNumber: dateNumber, addDays: addDays, validDate: validDate, csv: csv, sample: sample };
 })();
 if (typeof module !== 'undefined') module.exports = TrackerCore;
 

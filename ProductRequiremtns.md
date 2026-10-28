@@ -82,6 +82,7 @@ Only the title is required when creating a task. Other fields receive configured
 - Support pasting multiple lines to create multiple tasks.
 - Support bulk changes to status, assignee, priority, epic, task type, and dates.
 - Allow duplication of an issue, optionally including all descendants. Copies receive new IDs and timestamps, start in Backlog with progress/time spent/completion reset, and do not inherit claims or result evidence.
+- Allow revision-checked undo of the complete copied tree, preserving originals. Refuse removal if a copy changed, received comments, or gained external parent/dependency references. Retain the undo operation ID across failures and reloads so acknowledged retries do not remove unrelated work.
 - Support reusable templates.
 - Provide undo for supported edits, moves, and scheduling changes.
 - Avoid unnecessary confirmation dialogs for routine edits.
