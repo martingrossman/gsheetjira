@@ -44,7 +44,7 @@
   const uiStorageKey = 'sheetflow.ui.v1';
   const noEpicLaneKey = '__no_epic__';
   const state = { issues: [], comments: {}, settings: [], drafts: {}, saveQueues: {}, pendingCreateIds: {}, activeSaves: 0, quickQueue: [], undoStack: [], collapsedEpics: {}, collapsedGanttStories: {}, swimlanes: true, ganttLabelWidth: 260, ready: false, busy: false, view: 'kanban', query: '', type: '', assignee: '', status: '', sprint: '', epic: '', sort: 'rank', ascending: true, allColumns: false, timelineStart: C.addDays(today(), -7), zoom: 'weeks', spreadsheetUrl: '' };
-  let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
+  let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { state.quickQueue = JSON.parse(localStorage.getItem(quickQueueStorageKey) || '[]') || []; } catch (ignore) { state.quickQueue = []; }
@@ -439,7 +439,7 @@
     ].map(s => `<div class="stat"><div class="stat-label">${icon(s[0])}${s[1]}</div><div class="stat-bottom"><span class="stat-number">${s[2]}</span><span class="stat-note ${s[4]}">${s[3]}</span></div></div>`).join('');
     $('#epic-nav').innerHTML = state.issues.filter(i => i.type === 'Epic').map(i => `<button data-epic="${escape(i.id)}" class="${state.epic === i.id ? 'active' : ''}" title="${escape(i.summary)}"><span class="epic-dot"></span><span class="epic-name">${escape(i.summary)}</span></button>`).join('') || '<span class="nav-caption">No epics yet</span>';
     $('#issue-count').textContent = `${issues.length} of ${state.issues.length} issues`;
-    $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Edit a cell to save. Click an issue ID for the full story.', gantt: 'Double-click labels or bars to edit. Drag bars to reschedule; Epic spans follow child schedules.' }[state.view];
+    $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: 'Edit cells to save. Use Manual order and the row arrows or drag handle to reorder siblings. Click an issue ID for details.', gantt: 'Double-click labels or bars to edit. Drag bars to reschedule; Epic spans follow child schedules.' }[state.view];
     if (!state.issues.length) { $('#view-content').innerHTML = `<div class="empty-state">${icon('stack')}<h2>A fresh start for your next project.</h2><p>Create your first epic, story, task, or bug.</p><button class="button primary" data-new="Backlog">Create your first issue</button></div>`; return; }
     if (!issues.length) { $('#view-content').innerHTML = '<div class="empty-state"><h2>No issues match these filters.</h2><p>Try a different search, or clear the filters to see everything.</p><button class="button secondary" data-clear>Clear filters</button></div>'; return; }
     const content = $('#view-content'), oldScroll = content.querySelector('.board, .table-wrap, .gantt-viewport');
@@ -515,14 +515,52 @@
       const order = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
       return order * (state.ascending ? 1 : -1);
     });
-    const renderRow = issue => `<tr>${columns.map(field => `<td>${cell(issue, field)}</td>`).join('')}</tr>`;
+    const manualOrder = state.sort === 'rank' && state.ascending;
+    const renderRow = issue => `<tr class="sheet-issue-row" data-sheet-row-id="${escape(issue.id)}" data-sheet-status="${escape(issue.status)}" data-sheet-parent="${escape(issue.parentId || '')}">${columns.map(field => `<td>${field.key === 'id' ? `<div class="sheet-id-cell">${sheetRowControls(issue, list, manualOrder)}${cell(issue, field)}</div>` : cell(issue, field)}</td>`).join('')}</tr>`;
     const body = state.swimlanes
       ? epicLanes(list).map(lane => {
         const collapsed = laneCollapsed(lane);
         return `<tbody class="sheet-lane-group"><tr class="sheet-lane-row"><td colspan="${columns.length}">${renderSwimlaneHeader(lane, 'sheet-lane-title')}</td></tr>${collapsed ? '' : lane.items.map(renderRow).join('')}</tbody>`;
       }).join('')
       : `<tbody>${list.map(renderRow).join('')}</tbody>`;
-    $('#view-content').innerHTML = `<div class="sheet-tools"><span>Every detail, in one place.</span><label><input id="all-columns" type="checkbox" ${state.allColumns ? 'checked' : ''}> Show all ${C.fields.length} columns</label></div><div class="table-wrap"><table class="issue-table"><thead><tr>${columns.map(field => `<th><button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button></th>`).join('')}</tr></thead>${body}</table></div>`;
+    $('#view-content').innerHTML = `<div class="sheet-tools"><span>Every detail, in one place.</span><div class="sheet-tool-actions"><button type="button" class="button secondary ${manualOrder ? 'selected' : ''}" data-sheet-manual aria-pressed="${manualOrder}" title="Enable rank-based order to move rows">Manual order</button><label><input id="all-columns" type="checkbox" ${state.allColumns ? 'checked' : ''}> Show all ${C.fields.length} columns</label></div></div><div class="table-wrap"><table class="issue-table"><thead><tr>${columns.map(field => `<th><button data-sort="${field.key}">${escape(field.label)} ${state.sort === field.key ? (state.ascending ? '↑' : '↓') : ''}</button></th>`).join('')}</tr></thead>${body}</table></div>`;
+  }
+  function sheetRowControls(issue, list, manualOrder) {
+    const visible = list.filter(item => item.status === issue.status && (item.parentId || '') === (issue.parentId || ''));
+    const index = visible.findIndex(item => item.id === issue.id), disabled = !manualOrder || state.busy;
+    const label = `${issue.id}: ${issue.summary}`;
+    return `<span class="sheet-row-controls"><button type="button" data-sheet-move="up" data-sheet-move-id="${escape(issue.id)}" aria-label="Move ${escape(label)} up" title="Move up" ${disabled || index <= 0 ? 'disabled' : ''}>↑</button><button type="button" data-sheet-move="down" data-sheet-move-id="${escape(issue.id)}" aria-label="Move ${escape(label)} down" title="Move down" ${disabled || index < 0 || index >= visible.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="sheet-row-grip" data-sheet-drag-id="${escape(issue.id)}" draggable="${!disabled}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" aria-label="Drag ${escape(label)} to reorder; use Alt+ArrowUp or Alt+ArrowDown" title="Drag or use Alt+ArrowUp/ArrowDown" ${disabled ? 'aria-disabled="true"' : ''}>⠿</button></span>`;
+  }
+  function sheetSameOrderScope(a, b) { return a && b && a.status === b.status && (a.parentId || '') === (b.parentId || ''); }
+  function sheetRankForDrop(moving, target, after) {
+    const siblings = C.sorted(state.issues.filter(issue => issue.id !== moving.id && sheetSameOrderScope(issue, moving)));
+    const targetIndex = siblings.findIndex(issue => issue.id === target.id);
+    if (targetIndex < 0) return null;
+    const insertAt = targetIndex + (after ? 1 : 0), left = insertAt > 0 ? Number(siblings[insertAt - 1].rank) || 0 : null;
+    const right = insertAt < siblings.length ? Number(siblings[insertAt].rank) || 0 : null;
+    if (left !== null && right !== null && right - left <= Number.EPSILON * Math.max(1, Math.abs(left), Math.abs(right)) * 8) return null;
+    return left === null ? (right === null ? 1000 : right > 0 ? right / 2 : null) : right === null ? left + 1000 : left + (right - left) / 2;
+  }
+  async function moveSheetRow(id, targetId, after, focusDirection = '') {
+    const moving = issueById(id), target = issueById(targetId);
+    if (!moving || !target || moving.id === target.id || state.busy || !sheetSameOrderScope(moving, target)) return;
+    const rank = sheetRankForDrop(moving, target, after);
+    if (rank === null) { notify('No safe order position is available here. Refresh the project or move a different row first.', true); return; }
+    try {
+      await persist({ ...moving, rank }, moving.version, 'Order updated', 'moveIssue');
+      if (focusDirection) {
+        const preferred = $(`[data-sheet-move-id="${CSS.escape(id)}"][data-sheet-move="${focusDirection}"]`);
+        (preferred && !preferred.disabled ? preferred : $(`[data-sheet-drag-id="${CSS.escape(id)}"]`) || $(`[data-sheet-move-id="${CSS.escape(id)}"]:not(:disabled)`))?.focus();
+      }
+    } catch (error) { notify(error.message, true); }
+  }
+  async function moveSheetWithKeyboard(id, direction) {
+    const rows = $$('.sheet-issue-row').map(row => issueById(row.dataset.sheetRowId)).filter(Boolean), moving = issueById(id);
+    if (!moving || !rows.length || state.busy) return;
+    const index = rows.findIndex(issue => issue.id === id), step = direction === 'up' ? -1 : 1;
+    let target = null;
+    for (let cursor = index + step; cursor >= 0 && cursor < rows.length; cursor += step) if (sheetSameOrderScope(rows[cursor], moving)) { target = rows[cursor]; break; }
+    if (target) await moveSheetRow(id, target.id, direction === 'down', direction);
   }
   function cell(issue, field) {
     const key = field.key, value = issue[key];
@@ -898,10 +936,12 @@
   $('#close-help').addEventListener('click', () => $('#help-dialog').close());
   $('#view-content').addEventListener('click', event => {
     if (state.busy || Date.now() < suppressClickUntil) return;
+    const sheetMove = event.target.closest('[data-sheet-move]');
+    if (state.view === 'sheet' && sheetMove) { moveSheetWithKeyboard(sheetMove.dataset.sheetMoveId, sheetMove.dataset.sheetMove); return; }
     const storyLabel = event.target.closest('.gantt-row-label.has-story-toggle');
     if (ganttStoryClickTimer && (!storyLabel || storyLabel.dataset.open !== ganttStoryClickTimer.id || event.detail > 1)) cancelGanttStoryClick();
     if (state.view === 'gantt' && !event.target.closest('.gantt-quick-popover, .gantt-add-button')) closeGanttQuickPopover();
-    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-gantt-add]');
+    const target = event.target.closest('[data-open], [data-issue], [data-new], [data-quick-add], [data-clear], [data-sort], [data-sheet-manual], [data-timeline], [data-bar], [data-toggle-lane], [data-toggle-gantt-story], [data-gantt-add]');
     if (!target) return;
     if (target.hasAttribute('data-toggle-lane')) { const id = target.dataset.toggleLane; setEpicCollapsed(id, !state.collapsedEpics[id]); render(); }
     else if (target.hasAttribute('data-toggle-gantt-story')) { cancelGanttStoryClick(); const id = target.dataset.toggleGanttStory; setGanttStoryCollapsed(id, !state.collapsedGanttStories[id]); render(); }
@@ -923,6 +963,7 @@
     else if (target.hasAttribute('data-new')) openIssue('', { status: target.dataset.new, parentId: state.epic });
     else if (target.hasAttribute('data-clear')) clearFilters();
     else if (target.hasAttribute('data-sort')) { state.ascending = state.sort === target.dataset.sort ? !state.ascending : true; state.sort = target.dataset.sort; render(); }
+    else if (target.hasAttribute('data-sheet-manual')) { state.sort = 'rank'; state.ascending = true; render(); }
     else if (target.hasAttribute('data-timeline')) {
       const next = target.dataset.timeline === 'today' ? C.addDays(today(), -7) : C.addDays(state.timelineStart, Number(target.dataset.timeline) * 28);
       if (C.validDate(next) && next <= '2200-01-01') { state.timelineStart = next; render(); }
@@ -964,6 +1005,7 @@
   $('#view-content').addEventListener('focusout', event => { if (state.view === 'gantt' && !event.relatedTarget?.closest?.('.gantt-row-label[data-preview-id], .gantt-bar[data-preview-id]')) hideGanttCommentPreview(); });
   $('#view-content').addEventListener('keydown', event => {
     if (event.target.matches('.gantt-resizer') && ['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); applyGanttLabelWidth(state.ganttLabelWidth + (event.key === 'ArrowRight' ? 10 : -10)); saveUiState(); }
+    else if (state.view === 'sheet' && event.altKey && event.target.matches('.sheet-row-grip') && ['ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); moveSheetWithKeyboard(event.target.dataset.sheetDragId, event.key === 'ArrowUp' ? 'up' : 'down'); }
     else if (state.view === 'gantt' && event.altKey && event.target.matches('.gantt-label-hit, .swimlane-collapse[data-gantt-drag-id]') && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); moveGanttWithKeyboard(event.target.dataset.ganttDragId, event.key.slice(5).toLowerCase(), event.target); }
     else if (state.view === 'kanban' && event.altKey && event.target.matches('.card') && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); moveCardWithKeyboard(event.target.dataset.issue, event.key.slice(5).toLowerCase(), event.target); }
     else if (event.target.matches('.gantt-label-hit, .gantt-bar') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); const target = event.target.closest('[data-open], [data-bar]'); openIssue(target?.dataset.open || target?.dataset.bar); }
@@ -990,10 +1032,17 @@
       const unparentDrop = $('#gantt-unparent-drop'); if (unparentDrop) unparentDrop.hidden = issue.type === 'Epic';
       return;
     }
+    const sheetSource = event.target.closest('[data-sheet-drag-id]');
+    if (state.view === 'sheet' && sheetSource && state.sort === 'rank' && state.ascending && !state.busy) {
+      const issue = issueById(sheetSource.dataset.sheetDragId);
+      if (!issue) { event.preventDefault(); return; }
+      sheetDraggingId = issue.id; event.dataTransfer.setData('text/plain', issue.id); event.dataTransfer.setData('application/x-sheetflow-issue', issue.id); event.dataTransfer.effectAllowed = 'move';
+      sheetSource.closest('.sheet-issue-row')?.classList.add('sheet-dragging'); return;
+    }
     const card = event.target.closest('.card'); if (!card || state.busy) { event.preventDefault(); return; }
     draggingId = card.dataset.issue; event.dataTransfer.setData('text/plain', draggingId); event.dataTransfer.effectAllowed = 'move'; card.classList.add('dragging');
   });
-  function clearDragStyle() { $$('.drag-over, .drop-before, .dragging, .gantt-dragging, .gantt-drop-before, .gantt-drop-after, .gantt-drop-parent, .gantt-drop-invalid, .gantt-drop-unparent').forEach(el => el.classList.remove('drag-over', 'drop-before', 'dragging', 'gantt-dragging', 'gantt-drop-before', 'gantt-drop-after', 'gantt-drop-parent', 'gantt-drop-invalid', 'gantt-drop-unparent')); }
+  function clearDragStyle() { $$('.drag-over, .drop-before, .dragging, .gantt-dragging, .gantt-drop-before, .gantt-drop-after, .gantt-drop-parent, .gantt-drop-invalid, .gantt-drop-unparent, .sheet-dragging, .sheet-drop-before, .sheet-drop-after').forEach(el => el.classList.remove('drag-over', 'drop-before', 'dragging', 'gantt-dragging', 'gantt-drop-before', 'gantt-drop-after', 'gantt-drop-parent', 'gantt-drop-invalid', 'gantt-drop-unparent', 'sheet-dragging', 'sheet-drop-before', 'sheet-drop-after')); }
   $('#view-content').addEventListener('dragover', event => {
     if (state.view === 'gantt' && ganttHierarchyDrag && !state.busy) {
       const unparentDrop = event.target.closest('[data-gantt-unparent]'), row = event.target.closest('[data-gantt-row-id]');
@@ -1007,6 +1056,12 @@
       (unparentDrop || row).classList.add(unparentDrop ? 'gantt-drop-unparent' : zone === 'parent' ? 'gantt-drop-parent' : zone === 'before' ? 'gantt-drop-before' : 'gantt-drop-after');
       return;
     }
+    if (state.view === 'sheet' && sheetDraggingId && !state.busy) {
+      const row = event.target.closest('.sheet-issue-row'), moving = issueById(sheetDraggingId), target = row && issueById(row.dataset.sheetRowId);
+      if (!row || !target || target.id === sheetDraggingId || !sheetSameOrderScope(moving, target)) return;
+      event.preventDefault(); event.dataTransfer.dropEffect = 'move'; clearDragStyle();
+      row.classList.add(event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2 ? 'sheet-drop-before' : 'sheet-drop-after'); return;
+    }
     const column = event.target.closest('.column'); if (!column || !draggingId || state.busy) return;
     event.preventDefault(); event.dataTransfer.dropEffect = 'move';
     $$('.drag-over, .drop-before').forEach(el => el.classList.remove('drag-over', 'drop-before'));
@@ -1014,7 +1069,7 @@
   });
   $('#view-content').addEventListener('dragend', () => {
     if (ganttHierarchyDrag) { suppressClickUntil = Date.now() + 450; ganttHierarchyDrag = null; const unparentDrop = $('#gantt-unparent-drop'); if (unparentDrop) unparentDrop.hidden = true; }
-    draggingId = null; clearDragStyle();
+    draggingId = null; sheetDraggingId = null; clearDragStyle();
   });
   $('#view-content').addEventListener('drop', async event => {
     if (state.view === 'gantt' && ganttHierarchyDrag) {
@@ -1026,6 +1081,14 @@
       suppressClickUntil = Date.now() + 450;
       await saveGanttHierarchyDrop(movingId, Boolean(unparentDrop), target?.id || '', zone);
       return;
+    }
+    if (state.view === 'sheet' && sheetDraggingId && !state.busy) {
+      const row = event.target.closest('.sheet-issue-row'), movingId = sheetDraggingId, moving = issueById(movingId), target = row && issueById(row.dataset.sheetRowId);
+      sheetDraggingId = null;
+      if (!row || !target || target.id === movingId || !sheetSameOrderScope(moving, target)) { clearDragStyle(); return; }
+      event.preventDefault();
+      const after = event.clientY >= row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
+      clearDragStyle(); suppressClickUntil = Date.now() + 450; await moveSheetRow(movingId, target.id, after); return;
     }
     const column = event.target.closest('.column'); if (!column || !draggingId || state.busy) return;
     event.preventDefault(); const id = draggingId, issue = issueById(id); draggingId = null;
