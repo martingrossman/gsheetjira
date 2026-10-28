@@ -32,9 +32,9 @@ var SheetFlowRepository = (function () {
     target.getRange(Math.max(2, target.getLastRow() + 1), 1, values.length, values[0].length).setValues(values);
     return records(book, tab).slice(-records_.length);
   }
-  function upsert(book, tab, record) {
+  function upsert(book, tab, record, knownRecords) {
     var definition_ = definition(tab), target = sheet(book, tab), idHeader = definition_.headers[0];
-    var current = records(book, tab), matches = current.filter(function (item) { return String(item[idHeader]) === String(record[idHeader]); });
+    var current = knownRecords || records(book, tab), matches = current.filter(function (item) { return String(item[idHeader]) === String(record[idHeader]); });
     if (matches.length > 1) throw new Error('Duplicate ID ' + record[idHeader] + ' in ' + definition_.name + '.');
     var values = rows(tab, [record])[0];
     var row = matches.length ? matches[0]._row : Math.max(2, target.getLastRow() + 1);

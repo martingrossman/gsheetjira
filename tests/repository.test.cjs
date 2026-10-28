@@ -8,7 +8,7 @@ const Core = require('../Core.js');
 function harness() {
   const properties = new Map([['SPREADSHEET_ID', 'book-v2'], ['SHEETFLOW_ACTIVE_SCHEMA', '2']]);
   const tabs = {};
-  const notes = new Map();
+  const notes = new Map(), reads = [], logs = [];
   let book;
   function makeSheet(name, headers) {
     const rows = [headers.slice()];
@@ -19,7 +19,7 @@ function harness() {
       getParent: () => book,
       getRange(row, col, height = 1, width = 1) {
         return {
-          getValues: () => Array.from({ length: height }, (_, r) => Array.from({ length: width }, (_, c) => rows[row - 1 + r]?.[col - 1 + c] ?? '')),
+          getValues: () => { reads.push({ name, row, col, height, width }); return Array.from({ length: height }, (_, r) => Array.from({ length: width }, (_, c) => rows[row - 1 + r]?.[col - 1 + c] ?? '')); },
           setValues(values) { values.forEach((line, r) => { while (rows.length <= row - 1 + r) rows.push(Array(headers.length).fill('')); line.forEach((value, c) => { rows[row - 1 + r][col - 1 + c] = value; }); }); return this; },
           setValue(value) { this.setValues([[value]]); return this; },
           getRow: () => row, getLastRow: () => row + height - 1, getColumn: () => col, getLastColumn: () => col + width - 1,
@@ -33,7 +33,7 @@ function harness() {
     return sheet;
   }
   const context = vm.createContext({
-    Date, console, TrackerCore: Core,
+    Date, console: { log: (...args) => logs.push(args.join(' ')) }, TrackerCore: Core,
     SpreadsheetApp: { openById: () => book, flush() {} },
     PropertiesService: { getScriptProperties: () => ({ getProperty: key => properties.get(key) || '', setProperty: (key, value) => properties.set(key, String(value)) }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
@@ -59,7 +59,7 @@ function harness() {
   vm.runInContext(fs.readFileSync(require.resolve('../Repository.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(require.resolve('../Code.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(require.resolve('../Ordering.js'), 'utf8'), context);
-  return { api: context, tabs, book, properties, notes };
+  return { api: context, tabs, book, properties, notes, reads, logs };
 }
 
 function addRecord(sheet, record) {
@@ -276,4 +276,72 @@ test('duplicate undo uses persisted history receipts after the history service r
   assert.equal(JSON.stringify(replayed), JSON.stringify(undone));
   assert.equal(h.tabs['Change History'].rows.length, rows);
   assert.equal(h.api.getProject().issues.length, 1);
+});
+
+test('ordinary v2 saves reuse one locked snapshot and verify only the saved row', () => {
+  const h = harness(); loadBrowserServices(h);
+  addRecord(h.tabs['Projects and Epics'], {ID:'PROJECT-1','Entity Kind':'Project',Title:'Project',Active:true,Revision:1});
+  const epic = h.api.saveIssue({summary:'Parent epic',type:'Epic'});
+  for (let index = 0; index < 12; index++) h.api.saveIssue({summary:'Existing ' + index,parentId:epic.id});
+  h.reads.length = 0;
+  const saved = h.api.saveIssue({summary:'Measured save',parentId:epic.id,operationId:'measured-save'});
+  const fullTasks = h.reads.filter(read => read.name==='Tasks' && read.row===2 && read.height>1);
+  const projectReads = h.reads.filter(read => read.name==='Projects and Epics' && read.row===2);
+  const systemReads = h.reads.filter(read => read.name==='_System' && read.row===2);
+  const schemaHeaders = h.reads.filter(read => read.row===1 && read.name!=='Issues');
+  console.log('V2 save read counts:',JSON.stringify({rangeReads:h.reads.length,taskRegisters:fullTasks.length,projectRegisters:projectReads.length,systemReads:systemReads.length,schemaHeaders:schemaHeaders.length}));
+  assert.equal(fullTasks.length,1); assert.equal(projectReads.length,1); assert.equal(systemReads.length,1);
+  assert.equal(schemaHeaders.length,Object.keys(h.api.SheetFlowSchema.tabs).length);
+  const fresh = h.api.getProject().issues.find(issue=>issue.id===saved.id);
+  assert.equal(saved.version,fresh.version);
+  h.reads.length=0;
+  assert.equal(h.api.saveIssue({summary:'Ignored retry',operationId:'measured-save'}).id,saved.id);
+  assert.equal(h.reads.filter(read=>read.name==='Tasks').length,0);
+});
+
+test('legacy saves share operational reads and return the persisted task-type revision', () => {
+  const h=harness();h.properties.set('SHEETFLOW_ACTIVE_SCHEMA','1');loadBrowserServices(h);
+  for(let index=0;index<12;index++)h.api.saveIssue({summary:'Existing '+index});
+  h.reads.length=0;
+  const saved=h.api.saveIssue({summary:'Mapped category',taskTypeId:'data',operationId:'typed-create'});
+  assert.equal(h.reads.filter(read=>read.name==='_System' && read.row===2).length,1);
+  assert.equal(h.reads.filter(read=>read.name==='Issues' && read.row===2 && read.height>1).length,1);
+  const fresh=h.api.getProject().issues.find(issue=>issue.id===saved.id);
+  assert.equal(saved.taskTypeId,'data');assert.equal(saved.version,fresh.version);
+  const updated=h.api.saveIssue({id:saved.id,summary:'Still editable',taskTypeId:'algo',operationId:'typed-update'},saved.version);
+  assert.equal(updated.taskTypeId,'algo');assert.equal(updated.version,h.api.getProject().issues.find(issue=>issue.id===saved.id).version);
+  assert.equal(h.api.saveIssue({summary:'Ignored',operationId:'typed-create'}).id,saved.id);
+  assert.equal(h.api.getProject().issues.length,13);
+});
+
+test('optimized saves use fresh data on every request and retain v2 workflow metadata', () => {
+  const h=harness();
+  addRecord(h.tabs['Projects and Epics'],{ID:'PROJECT-1','Entity Kind':'Project',Title:'Project',Active:true,Revision:1});
+  let task=h.api.saveIssue({summary:'Initial task',startDate:'2026-10-28',dueDate:'2026-10-29'});
+  const headers=h.tabs.Tasks.rows[0],row=h.tabs.Tasks.rows.find(row=>row[0]===task.id);
+  row[headers.indexOf('Acceptance Criteria')]='Keep acceptance criteria';row[headers.indexOf('Created By')]='original-creator';row[headers.indexOf('Claimed By')]='existing-claim';
+  task=h.api.getProject().issues.find(issue=>issue.id===task.id);
+  const updated=h.api.saveIssue({id:task.id,summary:'Updated task'},task.version);
+  assert.equal(updated.version,h.api.getProject().issues.find(issue=>issue.id===task.id).version);
+  assert.equal(row[headers.indexOf('Acceptance Criteria')],'Keep acceptance criteria');
+  assert.equal(row[headers.indexOf('Created By')],'original-creator');assert.equal(row[headers.indexOf('Claimed By')],'existing-claim');
+  assert.equal(updated.startDate,'2026-10-28');assert.equal(updated.dueDate,'2026-10-29');
+  row[headers.indexOf('Title')]='Changed directly in Sheets';
+  assert.throws(()=>h.api.saveIssue({id:task.id,summary:'Stale edit'},updated.version),/changed elsewhere/);
+  assert.equal(row[headers.indexOf('Title')],'Changed directly in Sheets');
+  const current=h.api.getProject().issues.find(issue=>issue.id===task.id);
+  headers[headers.indexOf('Title')]='Broken header';
+  assert.throws(()=>h.api.saveIssue({id:task.id,summary:'Unsafe edit'},current.version),/schema is incomplete/);
+});
+
+test('project refresh batches comment reads and excludes comments on unavailable issues', () => {
+  const h=harness();loadBrowserServices(h);
+  addRecord(h.tabs['Projects and Epics'],{ID:'PROJECT-1','Entity Kind':'Project',Title:'Project',Active:true,Revision:1});
+  const first=h.api.saveIssue({summary:'First task'}),second=h.api.saveIssue({summary:'Second task'});
+  h.api.addTaskComment(first.id,'First comment');h.api.addTaskComment(second.id,'Second comment');h.api.addTaskComment('missing-id','Orphan comment');
+  h.reads.length=0;
+  const project=h.api.getProject();
+  assert.equal(h.reads.filter(read=>read.name==='Comments' && read.row===2).length,1);
+  assert.equal(project.comments[first.id][0].body,'First comment');assert.equal(project.comments[second.id][0].body,'Second comment');
+  assert.equal(project.comments['missing-id'],undefined);assertBrowserValue(project);
 });

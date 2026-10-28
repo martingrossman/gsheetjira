@@ -38,11 +38,11 @@ var SheetFlowSchema = (function () {
   };
   function tabNames() { return Object.keys(tabs).map(function (key) { return tabs[key].name; }); }
   function headers(tab) { return tabs[tab].headers.slice(); }
-  function report(book) {
+  function report(book, systemRows) {
     var result = { version: version, tabs: {}, missingTabs: [], schemaVersion: '' };
     var system = book.getSheetByName(tabs.system.name);
     if (system && system.getLastRow() > 1) {
-      var rows = system.getRange(2, 1, system.getLastRow() - 1, 2).getValues();
+      var rows = systemRows || system.getRange(2, 1, system.getLastRow() - 1, 2).getValues();
       rows.forEach(function (row) { if (row[0] === 'SCHEMA_VERSION') result.schemaVersion = String(row[1]); });
     }
     tabNames().forEach(function (name) {

@@ -9,9 +9,10 @@ function harness() {
   const notes = new Map();
   const props = new Map([['SPREADSHEET_ID', 'book-1']]);
   let locks = 0, releases = 0;
+  const reads = [], logs = [];
   function range(row, column, height = 1, width = 1) {
     return {
-      getValues: () => Array.from({ length: height }, (_, r) => Array.from({ length: width }, (_, c) => rows[row - 1 + r]?.[column - 1 + c] ?? '')),
+      getValues: () => { reads.push({ row, column, height, width }); return Array.from({ length: height }, (_, r) => Array.from({ length: width }, (_, c) => rows[row - 1 + r]?.[column - 1 + c] ?? '')); },
       setValues: values => { values.forEach((line, r) => line.forEach((value, c) => { if (!rows[row - 1 + r]) rows[row - 1 + r] = Array(C.fields.length).fill(''); rows[row - 1 + r][column - 1 + c] = typeof value === 'string' && value.startsWith("'") ? value.slice(1) : value; })); },
       setValue: value => range(row, column).setValues([[value]]),
       getRow: () => row, getLastRow: () => row + height - 1, getColumn: () => column, getLastColumn: () => column + width - 1,
@@ -22,7 +23,7 @@ function harness() {
   }
   const sheet = { getLastRow: () => rows.length, getMaxRows: () => 1000, getRange: range, getName: () => 'Issues', getParent: () => book, deleteRow: row => rows.splice(row - 1, 1) };
   const book = { getSheetByName: () => sheet, getId: () => 'book-1', getUrl: () => 'https://docs.google.com/spreadsheets/d/book-1/edit', getName: () => 'Project', getSpreadsheetTimeZone: () => 'Europe/Prague' };
-  const context = vm.createContext({ Date, console, TrackerCore: C,
+  const context = vm.createContext({ Date, console: { log: (...args) => logs.push(args.join(' ')) }, TrackerCore: C,
     SpreadsheetApp: { openById: () => book, flush: () => {} },
     PropertiesService: { getScriptProperties: () => ({ getProperty: key => props.get(key), setProperty: (key, value) => props.set(key, value) }) },
     LockService: { getScriptLock: () => ({ waitLock: () => locks++, releaseLock: () => releases++ }) },
@@ -33,7 +34,7 @@ function harness() {
     }
   });
   vm.runInContext(fs.readFileSync(require.resolve('../Code.js'), 'utf8'), context);
-  return { api: context, rows, notes, props, sheet, book, balanced: () => locks === releases };
+  return { api: context, rows, notes, props, sheet, book, reads, logs, balanced: () => locks === releases };
 }
 test('server creates, updates, serializes dates, and deletes issues', () => {
   const h = harness();
@@ -291,4 +292,29 @@ test('failed legacy duplicate undo restores removed copies and can be retried', 
   h.sheet.deleteRow = remove;
   assert.equal(h.api.undoDuplicateIssues('duplicate-tree', h.expected, 'retry-undo').ids.length, 2);
   assert.ok(h.balanced());
+});
+
+test('ordinary legacy saves read the register once, verify one row, and report stage timings', () => {
+  const h = harness();
+  for (let index = 0; index < 12; index++) h.api.saveIssue({summary:'Existing ' + index});
+  h.reads.length = 0;
+  const saved = h.api.saveIssue({summary:'Measured save', startDate:'2026-10-28', taskTypeId:'data'});
+  const registerReads = h.reads.filter(read => read.row === 2 && read.width === C.fields.length && read.height > 1);
+  console.log('Legacy save read counts:', JSON.stringify({rangeReads:h.reads.length,registerReads:registerReads.length}));
+  assert.equal(registerReads.length, 1);
+  assert.ok(h.reads.some(read => read.row === 14 && read.height === 1 && read.width === C.fields.length));
+  const reloaded = h.api.getProject().issues.find(issue => issue.id === saved.id);
+  assert.equal(saved.version, reloaded.version); assert.equal(saved.startDate,'2026-10-28');
+  const timing = JSON.parse(h.logs.findLast(line => line.startsWith('SheetFlow save timing ')).slice('SheetFlow save timing '.length));
+  assert.equal(timing.outcome,'saved');
+  for (const key of ['lockWaitMs','openBookMs','readMs','writeMs','verifyMs','journalMs','totalServerMs']) assert.ok(Number.isFinite(timing[key]), key);
+});
+
+test('single-row verification detects structural edits and leaves failed save timing evidence', () => {
+  const h=harness();
+  h.api.SpreadsheetApp.flush=()=>{h.rows[1][0]='MOVED-ID';};
+  assert.throws(()=>h.api.saveIssue({summary:'Moved during save'}),/saved row moved/);
+  assert.ok(h.balanced());
+  const timing=JSON.parse(h.logs.at(-1).slice('SheetFlow save timing '.length));
+  assert.equal(timing.outcome,'failed');assert.ok(Number.isFinite(timing.totalServerMs));
 });

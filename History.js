@@ -15,23 +15,23 @@ var SheetFlowHistory = (function () {
     sheet.getRange(Math.max(2, sheet.getLastRow() + 1), 1, 1, row.length).setValues([row]);
     return row[0];
   }
-  function receipt(book, operationId, result) {
+  function receipt(book, operationId, result, systemRows) {
     if (!operationId) return;
     var sheet = book.getSheetByName('_System');
     if (!sheet) return;
     var key = receiptPrefix + operationId;
-    var rows = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues() : [];
+    var rows = systemRows || (sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues() : []);
     var value = JSON.stringify({ savedAt: new Date().toISOString(), result: result });
     var index = rows.findIndex(function (row) { return String(row[0]) === key; });
     if (index >= 0) sheet.getRange(index + 2, 2).setValue(value);
     else sheet.getRange(Math.max(2, sheet.getLastRow() + 1), 1, 1, 3).setValues([[key, value, new Date()]]);
   }
-  function findReceipt(book, operationId) {
+  function findReceipt(book, operationId, systemRows) {
     if (!operationId) return null;
     var sheet = book.getSheetByName('_System');
     if (!sheet || sheet.getLastRow() < 2) return null;
     var key = receiptPrefix + operationId;
-    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    var rows = systemRows || sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
     for (var i = 0; i < rows.length; i++) if (String(rows[i][0]) === key) {
       try { return JSON.parse(rows[i][1]); } catch (ignore) { return null; }
     }

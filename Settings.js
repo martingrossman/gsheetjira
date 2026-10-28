@@ -34,20 +34,21 @@ var SheetFlowSettings = (function () {
     target.getRange(index + 2, 8, 1, 2).setValues([[new Date(), actor_()]]);
     return read(book).find(function (setting) { return setting.id === id; });
   }
-  function taskTypeMap(book) {
+  function taskTypeMap(book, systemRows) {
     var target = book.getSheetByName('_System');
     if (!target || !target.getName || target.getName() !== '_System' || target.getLastRow() < 2) return {};
     var result = {};
-    target.getRange(2, 1, target.getLastRow() - 1, 2).getValues().forEach(function (row) { if (String(row[0]).indexOf('TASK_TYPE:') === 0) result[String(row[0]).slice(10)] = String(row[1] || 'algo'); });
+    (systemRows || target.getRange(2, 1, target.getLastRow() - 1, 2).getValues()).forEach(function (row) { if (String(row[0]).indexOf('TASK_TYPE:') === 0) result[String(row[0]).slice(10)] = String(row[1] || 'algo'); });
     return result;
   }
-  function setTaskType(book, taskId, typeId) {
+  function setTaskType(book, taskId, typeId, systemRows) {
     var target = book.getSheetByName('_System');
     if (!target || !target.getName || target.getName() !== '_System') return;
-    var key = 'TASK_TYPE:' + taskId, rows = target.getLastRow() > 1 ? target.getRange(2, 1, target.getLastRow() - 1, 2).getValues() : [];
+    var key = 'TASK_TYPE:' + taskId, rows = systemRows || (target.getLastRow() > 1 ? target.getRange(2, 1, target.getLastRow() - 1, 2).getValues() : []);
     var index = rows.findIndex(function (row) { return String(row[0]) === key; });
     if (index >= 0) target.getRange(index + 2, 2, 1, 2).setValues([[String(typeId || 'algo'), new Date()]]);
     else target.getRange(Math.max(2, target.getLastRow() + 1), 1, 1, 3).setValues([[key, String(typeId || 'algo'), new Date()]]);
+    return String(typeId || 'algo');
   }
   function actor_() { try { return Session.getActiveUser().getEmail() || 'owner-session'; } catch (ignore) { return 'owner-session'; } }
   return { defaults: defaults, ensure: ensure, read: read, update: update, taskTypeMap: taskTypeMap, setTaskType: setTaskType };
