@@ -19,7 +19,24 @@ test('Kanban has a flat rendering path and preserves epic relationships', async 
   const client = await read('Client.html');
 
   assert.match(client, /if \(!state\.swimlanes\) \{[\s\S]*?renderColumns\(issues\)/);
-  assert.match(client, /!state\.swimlanes \? issue\.parentId/);
+  const helpers = ['inEpicWithin', 'boardEpicId', 'boardMoveParent'].map(name => client.match(new RegExp(`  function ${name}\\([^]*?\\n  }`))?.[0]).join('\n');
+  const records = [
+    { id: 'e1', type: 'Epic' }, { id: 'e2', type: 'Epic' },
+    { id: 's1', type: 'Story', parentId: 'e1' },
+    { id: 't1', type: 'Task', parentId: 's1' },
+    { id: 't2', type: 'Task', parentId: 'e1' },
+    { id: 't3', type: 'Task', parentId: 't1' },
+    { id: 't4', type: 'Task', parentId: '' }
+  ];
+  const moveParent = new Function('state', 'issueById', `${helpers}; return boardMoveParent;`)({ issues: records }, id => records.find(issue => issue.id === id));
+  assert.equal(moveParent(records[3], 'e1'), 's1');
+  assert.equal(moveParent(records[5], 'e1'), 't1');
+  assert.throws(() => moveParent(records[3], 'e2'), /parent has been preserved/);
+  assert.throws(() => moveParent(records[5], ''), /parent has been preserved/);
+  assert.equal(moveParent(records[2], 'e2'), 'e2');
+  assert.equal(moveParent(records[4], ''), '');
+  assert.equal(moveParent(records[6], 'e2'), 'e2');
+  assert.throws(() => moveParent(records[4], 'missing'), /existing Epic/);
   assert.match(client, /!state\.swimlanes \|\| \(laneId \?/);
 });
 

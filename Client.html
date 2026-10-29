@@ -969,7 +969,7 @@
     const priorityClass = C.priorities.includes(issue.priority) ? issue.priority.toLowerCase() : '';
     const parent = issueById(issue.parentId);
     const dates = effectiveDates(issue);
-    return `<article class="card" draggable="true" tabindex="0" role="button" data-issue="${escape(issue.id)}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight" aria-label="${escape(issue.id + ': ' + issue.summary + '. Hold Alt and use arrows to reorder or change status.')}" title="Alt + ↑/↓ reorder · Alt + ←/→ change status"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels">${taskTypeBadge(issue.taskTypeId)}${C.split(issue.labels).slice(0, 2).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${dates.dueDate && dates.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${dates.dueDate ? escape(shortDate(dates.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}</div></article>`;
+    return `<article class="card" draggable="true" tabindex="0" role="group" data-issue="${escape(issue.id)}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight" aria-label="${escape(issue.id + ': ' + issue.summary + '. Press Enter to open. Hold Alt and use arrows to reorder or change status.')}" title="Alt + ↑/↓ reorder · Alt + ←/→ change status"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels">${taskTypeBadge(issue.taskTypeId)}${C.split(issue.labels).slice(0, 2).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${dates.dueDate && dates.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${dates.dueDate ? escape(shortDate(dates.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}<button type="button" class="button subtle card-move" data-board-move="${escape(issue.id)}" aria-label="Move ${escape(issue.id)}">Move</button></div></article>`;
   }
   function renderBoard(issues) {
     const pending = pendingQuickTasks();
@@ -1282,6 +1282,59 @@
     const replacement = $$('[data-gantt-drag-id]').find(element => element.dataset.ganttDragId === id);
     if (replacement) replacement.focus(); else source?.focus();
   }
+  function boardEpicId(issue) {
+    return state.issues.find(epic => epic.type === 'Epic' && inEpicWithin(issue, epic.id))?.id || '';
+  }
+  function boardMoveParent(issue, epicId) {
+    if (issue.type === 'Epic' || epicId === boardEpicId(issue)) return issue.parentId || '';
+    if (epicId && issueById(epicId)?.type !== 'Epic') throw new Error('Choose an existing Epic.');
+    if (issue.parentId && issueById(issue.parentId)?.type !== 'Epic') {
+      throw new Error('This issue belongs to a Story or nested task. Move its parent to the destination Epic, or explicitly change its parent in the issue editor first. Its parent has been preserved.');
+    }
+    return epicId;
+  }
+  function saveBoardMove(issue, status, parentId, rank) {
+    const input = { ...issue, status, parentId, rank };
+    C.validate(C.prepare(input, issue, today(), new Date().toISOString()), state.issues);
+    return persist(input, issue.version, 'Board updated', 'moveIssue');
+  }
+  let boardMoveIssue = null;
+  function focusBoardIssue(id) {
+    const card = $$('.card').find(element => element.dataset.issue === id);
+    (card?.querySelector('[data-board-move]') || card || $('#swimlanes-toggle')).focus();
+  }
+  function closeBoardMove() {
+    const id = boardMoveIssue?.id; $('#board-move-dialog').close(); boardMoveIssue = null; focusBoardIssue(id);
+  }
+  function openBoardMove(id) {
+    const issue = issueById(id); if (!issue || state.busy) return;
+    boardMoveIssue = { ...issue };
+    $('#board-move-context').textContent = `${id} · ${issue.summary}`;
+    $('#board-move-status').innerHTML = options(C.statuses, issue.status);
+    $('#board-move-epic').innerHTML = options(state.issues.filter(item => item.type === 'Epic').map(item => ({ value: item.id, label: item.summary })), boardEpicId(issue), 'No Epic');
+    const nested = issue.parentId && issueById(issue.parentId)?.type !== 'Epic';
+    $('#board-move-epic').disabled = issue.type === 'Epic' || Boolean(nested);
+    $('#board-move-note').textContent = nested ? 'Status changes preserve this issue’s parent. To change Epic, move its parent or explicitly reparent it in the issue editor.' : issue.type === 'Epic' ? 'Epics stay at the top level.' : 'Moves to the end of the destination column. Other issues keep their order.';
+    $('#board-move-error').hidden = true;
+    $('#board-move-dialog').showModal(); $('#board-move-status').focus();
+  }
+  $('#board-move-close').addEventListener('click', closeBoardMove);
+  $('#board-move-cancel').addEventListener('click', closeBoardMove);
+  $('#board-move-dialog').addEventListener('cancel', event => { event.preventDefault(); closeBoardMove(); });
+  $('#board-move-form').addEventListener('submit', async event => {
+    event.preventDefault(); const issue = boardMoveIssue; if (!issue || state.busy) return;
+    try {
+      // Keep the revision captured when the user opened the dialog.
+      const status = $('#board-move-status').value, epicId = $('#board-move-epic').value;
+      const parentId = boardMoveParent(issue, epicId);
+      if (status === issue.status && parentId === issue.parentId) { closeBoardMove(); return; }
+      const rank = (boardScopeItems(status, epicId, issue.id).at(-1)?.rank || 0) + 1000;
+      const saving = saveBoardMove(issue, status, parentId, rank);
+      closeBoardMove();
+      try { await saving; } catch (error) { notify(error.message, true); }
+      if (!document.querySelector('dialog[open]')) focusBoardIssue(issue.id);
+    } catch (error) { $('#board-move-error').textContent = error.message; $('#board-move-error').hidden = false; }
+  });
   async function moveCardWithKeyboard(id, direction, source) {
     const issue = issueById(id); if (!issue || state.busy) return;
     const laneId = source.closest('.swimlane')?.dataset.epicLane || '';
@@ -1657,6 +1710,8 @@
       return;
     }
     if (state.view === 'sheet' && event.target.closest('.sheet-columns-menu > summary')) { state.sheetColumnsMenuOpen = !state.sheetColumnsMenuOpen; return; }
+    const boardMove = event.target.closest('[data-board-move]');
+    if (boardMove) { openBoardMove(boardMove.dataset.boardMove); return; }
     const sheetMove = event.target.closest('[data-sheet-move]');
     if (state.view === 'sheet' && sheetMove) { moveSheetWithKeyboard(sheetMove.dataset.sheetMoveId, sheetMove.dataset.sheetMove); return; }
     const storyLabel = event.target.closest('.gantt-row-label.has-story-toggle');
@@ -1803,8 +1858,11 @@
       event.dataTransfer.dropEffect = 'move'; drop.element.classList.add(drop.style); return;
     }
     const column = event.target.closest('.column'); if (!column || !draggingId || state.busy) return;
-    event.preventDefault(); event.dataTransfer.dropEffect = 'move';
-    $$('.drag-over, .drop-before').forEach(el => el.classList.remove('drag-over', 'drop-before'));
+    event.preventDefault();
+    try { const issue = issueById(draggingId); boardMoveParent(issue, state.swimlanes ? column.closest('.swimlane')?.dataset.epicLane || '' : boardEpicId(issue)); }
+    catch (error) { event.dataTransfer.dropEffect = 'none'; clearDragStyle(); if ($('#toast').hidden || $('#toast').textContent !== error.message) notify(error.message, true); return; }
+    event.dataTransfer.dropEffect = 'move';
+    $('.drag-over, .drop-before').forEach(el => el.classList.remove('drag-over', 'drop-before'));
     column.classList.add('drag-over'); const card = event.target.closest('.card'); if (card && card.dataset.issue !== draggingId) card.classList.add('drop-before');
   });
   $('#view-content').addEventListener('dragend', () => {
@@ -1840,8 +1898,10 @@
     let rank;
     if (targetIndex >= 0) rank = (neighbors[targetIndex].rank + (targetIndex ? neighbors[targetIndex - 1].rank : 0)) / 2;
     else rank = (neighbors.at(-1)?.rank || 0) + 1000;
-    const parentId = issue.type === 'Epic' ? issue.parentId : (laneId || (!state.swimlanes ? issue.parentId : ''));
-    try { await persist({ ...issue, status: column.dataset.status, parentId, rank }, issue.version, 'Board updated', 'moveIssue'); }
+    try {
+      const parentId = boardMoveParent(issue, state.swimlanes ? laneId : boardEpicId(issue));
+      await saveBoardMove(issue, column.dataset.status, parentId, rank);
+    }
     catch (error) { notify(error.message, true); }
   });
   $('#view-content').addEventListener('pointerdown', event => {

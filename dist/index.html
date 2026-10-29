@@ -19,6 +19,7 @@
 @media(max-width:520px){.gantt-grid{--label-width:195px}.gantt-legend{flex-wrap:wrap}}
 .pending-card{cursor:default;border-style:dashed;box-shadow:none}.pending-card .card-id{color:var(--primary)}.pending-card.failed{border-color:var(--red)}.pending-card.failed .card-id,.pending-error{color:var(--red)}.pending-error{font-size:10px;overflow-wrap:anywhere}.pending-card .button{font-size:10px}
 .gantt-pending-row .gantt-row-label{padding-left:calc(14px + var(--row-depth,0)*12px)!important;background:var(--primary-soft)}.gantt-pending-row .gantt-label-copy{min-width:0;overflow:hidden;flex:1}.gantt-pending-row .gantt-label-summary{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gantt-pending-row .gantt-row-label strong{color:var(--primary)}.gantt-pending-row.failed .gantt-row-label strong{color:var(--red)}.gantt-pending-row .button{height:28px;padding:0 5px;flex-shrink:0;font-size:9px}.gantt-pending-message{position:absolute;top:14px;left:12px;max-width:min(620px,75vw);overflow:hidden;text-overflow:ellipsis;font-size:10px;color:var(--muted);white-space:nowrap}
+.card-move{min-height:40px;padding:0 8px;font-size:12px}#board-move-dialog{width:min(440px,calc(100vw - 24px))}#board-move-dialog .field{margin-top:12px}#board-move-note{font-size:12px;margin-top:12px}
 </style>
 <style>.swimlanes{display:grid;gap:18px}.swimlane{border:1px solid var(--line);border-radius:9px;background:var(--canvas);padding:0 10px 10px}.swimlane-header{width:100%;display:flex;align-items:center;gap:8px;padding:11px 5px;border:0;background:transparent;color:var(--ink);font:inherit;font-size:11px;text-align:left;cursor:pointer}.swimlane-header:focus-visible{outline:2px solid var(--primary);outline-offset:1px;border-radius:5px}.swimlane-progress{margin-left:auto;color:var(--muted);font-size:9px}.swimlane-toggle{display:inline-flex;flex:0 0 24px;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid var(--line);border-radius:5px;color:var(--muted);background:var(--surface);font-size:16px;line-height:1}.swimlane-header:hover .swimlane-toggle{background:var(--primary-soft);color:var(--primary)}.swimlane .board{min-height:0;padding-bottom:0}.swimlane.collapsed{padding-bottom:0}.swimlane.collapsed .swimlane-header{padding-bottom:13px}</style>
 <style>.comments-section{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}.comment-item{border-bottom:1px solid var(--line);padding:9px 0}.comment-item small{display:block;color:var(--muted);font-size:9px;margin-bottom:5px}.comment-item textarea,#new-comment{display:block;width:100%;min-height:54px;border:1px solid var(--line);border-radius:5px;padding:7px;font-size:10px;resize:vertical;margin-bottom:5px}.comment-item .button{height:26px;font-size:9px;padding:0 9px}</style>
@@ -142,6 +143,13 @@
     <form id="saved-view-form"><div class="dialog-header"><div><span class="eyebrow">PERSONAL VIEW</span><h2 id="saved-view-title">Save this view</h2></div><button type="button" id="saved-view-close" class="icon-button" aria-label="Close save view">×</button></div><div class="saved-view-body"><p>Save the current filters, view, sorting, visible columns and collapse state in this browser.</p><label class="field">View name<input id="saved-view-name" required maxlength="60" autocomplete="off" placeholder="e.g. Bugs to review"></label><div id="saved-view-error" class="error-banner" role="alert" hidden></div></div><div class="dialog-footer"><span></span><div><button type="button" id="saved-view-cancel" class="button secondary">Cancel</button><button type="submit" class="button primary">Save view</button></div></div></form>
   </dialog>
   <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title"><div class="dialog-header"><h2 id="help-title">One project. Three perspectives.</h2><button class="icon-button" id="close-help" aria-label="Close help">×</button></div><div class="help-body"><p><strong>Sheet</strong> is your editable issue register. Change cells directly, or open an issue for every detail.</p><p><strong>Kanban</strong> keeps work moving. Drag a card to change its status or reorder it. You can also change status in the issue editor, including on touch devices.</p><p><strong>Gantt</strong> shows your schedule. Drag a bar to move its dates; drag the right edge to change its due date. Open an issue for precise dates and dependencies. Focus a row label and use Alt + ↑/↓ to reorder, Alt + ← to unparent, or Alt + → to nest under the previous eligible sibling.</p><p><strong>Hierarchy:</strong> epics contain stories; tasks and bugs can belong to either. Choose an epic in the sidebar to focus on all its descendants.</p><p id="help-storage"></p><p><strong>Shortcuts:</strong> 1 / 2 / 3 switch views, / searches, N creates an issue, Esc closes an editor.</p><p>CSV export includes all fields for the currently filtered issues.</p></div></dialog>
+  <dialog id="board-move-dialog" class="help-dialog" aria-labelledby="board-move-title">
+    <form id="board-move-form">
+      <div class="dialog-header"><h2 id="board-move-title">Move issue</h2><button type="button" id="board-move-close" class="icon-button" aria-label="Close move">×</button></div>
+      <div class="help-body"><p id="board-move-context"></p><label class="field">Status<select id="board-move-status"></select></label><label class="field">Epic<select id="board-move-epic" aria-describedby="board-move-note"></select></label><p id="board-move-note">Moves to the end of the destination column. Other issues keep their order.</p><div id="board-move-error" class="error-banner" role="alert" hidden></div></div>
+      <div class="dialog-footer"><button type="button" id="board-move-cancel" class="button secondary">Cancel</button><button type="submit" class="button primary">Move</button></div>
+    </form>
+  </dialog>
   <datalist id="people"></datalist><datalist id="sprints"></datalist>
   <div id="toast" class="toast" role="status" hidden></div>
   <script>
@@ -1315,7 +1323,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const priorityClass = C.priorities.includes(issue.priority) ? issue.priority.toLowerCase() : '';
     const parent = issueById(issue.parentId);
     const dates = effectiveDates(issue);
-    return `<article class="card" draggable="true" tabindex="0" role="button" data-issue="${escape(issue.id)}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight" aria-label="${escape(issue.id + ': ' + issue.summary + '. Hold Alt and use arrows to reorder or change status.')}" title="Alt + ↑/↓ reorder · Alt + ←/→ change status"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels">${taskTypeBadge(issue.taskTypeId)}${C.split(issue.labels).slice(0, 2).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${dates.dueDate && dates.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${dates.dueDate ? escape(shortDate(dates.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}</div></article>`;
+    return `<article class="card" draggable="true" tabindex="0" role="group" data-issue="${escape(issue.id)}" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight" aria-label="${escape(issue.id + ': ' + issue.summary + '. Press Enter to open. Hold Alt and use arrows to reorder or change status.')}" title="Alt + ↑/↓ reorder · Alt + ←/→ change status"><div class="card-top"><span class="card-id">${typeIcon(issue.type)}${escape(issue.id)}</span><span class="priority ${priorityClass}">${prioritySymbol} ${escape(issue.priority)}</span></div><h3 class="card-title">${escape(issue.summary)}</h3>${parent ? `<div class="card-parent" title="${escape(parent.summary)}">ϟ ${escape(parent.summary)}</div>` : ''}<div class="card-labels">${taskTypeBadge(issue.taskTypeId)}${C.split(issue.labels).slice(0, 2).map(label => `<span class="label-tag">${escape(label)}</span>`).join('')}</div><div class="card-footer"><span class="card-due ${dates.dueDate && dates.dueDate < today() && issue.status !== 'Done' ? 'overdue' : ''}">${icon(issue.status === 'Done' ? 'check' : 'calendar')}${dates.dueDate ? escape(shortDate(dates.dueDate)) : 'No due date'}</span>${avatar(issue.assignee)}<button type="button" class="button subtle card-move" data-board-move="${escape(issue.id)}" aria-label="Move ${escape(issue.id)}">Move</button></div></article>`;
   }
   function renderBoard(issues) {
     const pending = pendingQuickTasks();
@@ -1628,6 +1636,59 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const replacement = $$('[data-gantt-drag-id]').find(element => element.dataset.ganttDragId === id);
     if (replacement) replacement.focus(); else source?.focus();
   }
+  function boardEpicId(issue) {
+    return state.issues.find(epic => epic.type === 'Epic' && inEpicWithin(issue, epic.id))?.id || '';
+  }
+  function boardMoveParent(issue, epicId) {
+    if (issue.type === 'Epic' || epicId === boardEpicId(issue)) return issue.parentId || '';
+    if (epicId && issueById(epicId)?.type !== 'Epic') throw new Error('Choose an existing Epic.');
+    if (issue.parentId && issueById(issue.parentId)?.type !== 'Epic') {
+      throw new Error('This issue belongs to a Story or nested task. Move its parent to the destination Epic, or explicitly change its parent in the issue editor first. Its parent has been preserved.');
+    }
+    return epicId;
+  }
+  function saveBoardMove(issue, status, parentId, rank) {
+    const input = { ...issue, status, parentId, rank };
+    C.validate(C.prepare(input, issue, today(), new Date().toISOString()), state.issues);
+    return persist(input, issue.version, 'Board updated', 'moveIssue');
+  }
+  let boardMoveIssue = null;
+  function focusBoardIssue(id) {
+    const card = $$('.card').find(element => element.dataset.issue === id);
+    (card?.querySelector('[data-board-move]') || card || $('#swimlanes-toggle')).focus();
+  }
+  function closeBoardMove() {
+    const id = boardMoveIssue?.id; $('#board-move-dialog').close(); boardMoveIssue = null; focusBoardIssue(id);
+  }
+  function openBoardMove(id) {
+    const issue = issueById(id); if (!issue || state.busy) return;
+    boardMoveIssue = { ...issue };
+    $('#board-move-context').textContent = `${id} · ${issue.summary}`;
+    $('#board-move-status').innerHTML = options(C.statuses, issue.status);
+    $('#board-move-epic').innerHTML = options(state.issues.filter(item => item.type === 'Epic').map(item => ({ value: item.id, label: item.summary })), boardEpicId(issue), 'No Epic');
+    const nested = issue.parentId && issueById(issue.parentId)?.type !== 'Epic';
+    $('#board-move-epic').disabled = issue.type === 'Epic' || Boolean(nested);
+    $('#board-move-note').textContent = nested ? 'Status changes preserve this issue’s parent. To change Epic, move its parent or explicitly reparent it in the issue editor.' : issue.type === 'Epic' ? 'Epics stay at the top level.' : 'Moves to the end of the destination column. Other issues keep their order.';
+    $('#board-move-error').hidden = true;
+    $('#board-move-dialog').showModal(); $('#board-move-status').focus();
+  }
+  $('#board-move-close').addEventListener('click', closeBoardMove);
+  $('#board-move-cancel').addEventListener('click', closeBoardMove);
+  $('#board-move-dialog').addEventListener('cancel', event => { event.preventDefault(); closeBoardMove(); });
+  $('#board-move-form').addEventListener('submit', async event => {
+    event.preventDefault(); const issue = boardMoveIssue; if (!issue || state.busy) return;
+    try {
+      // Keep the revision captured when the user opened the dialog.
+      const status = $('#board-move-status').value, epicId = $('#board-move-epic').value;
+      const parentId = boardMoveParent(issue, epicId);
+      if (status === issue.status && parentId === issue.parentId) { closeBoardMove(); return; }
+      const rank = (boardScopeItems(status, epicId, issue.id).at(-1)?.rank || 0) + 1000;
+      const saving = saveBoardMove(issue, status, parentId, rank);
+      closeBoardMove();
+      try { await saving; } catch (error) { notify(error.message, true); }
+      if (!document.querySelector('dialog[open]')) focusBoardIssue(issue.id);
+    } catch (error) { $('#board-move-error').textContent = error.message; $('#board-move-error').hidden = false; }
+  });
   async function moveCardWithKeyboard(id, direction, source) {
     const issue = issueById(id); if (!issue || state.busy) return;
     const laneId = source.closest('.swimlane')?.dataset.epicLane || '';
@@ -2003,6 +2064,8 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       return;
     }
     if (state.view === 'sheet' && event.target.closest('.sheet-columns-menu > summary')) { state.sheetColumnsMenuOpen = !state.sheetColumnsMenuOpen; return; }
+    const boardMove = event.target.closest('[data-board-move]');
+    if (boardMove) { openBoardMove(boardMove.dataset.boardMove); return; }
     const sheetMove = event.target.closest('[data-sheet-move]');
     if (state.view === 'sheet' && sheetMove) { moveSheetWithKeyboard(sheetMove.dataset.sheetMoveId, sheetMove.dataset.sheetMove); return; }
     const storyLabel = event.target.closest('.gantt-row-label.has-story-toggle');
@@ -2149,8 +2212,11 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       event.dataTransfer.dropEffect = 'move'; drop.element.classList.add(drop.style); return;
     }
     const column = event.target.closest('.column'); if (!column || !draggingId || state.busy) return;
-    event.preventDefault(); event.dataTransfer.dropEffect = 'move';
-    $$('.drag-over, .drop-before').forEach(el => el.classList.remove('drag-over', 'drop-before'));
+    event.preventDefault();
+    try { const issue = issueById(draggingId); boardMoveParent(issue, state.swimlanes ? column.closest('.swimlane')?.dataset.epicLane || '' : boardEpicId(issue)); }
+    catch (error) { event.dataTransfer.dropEffect = 'none'; clearDragStyle(); if ($('#toast').hidden || $('#toast').textContent !== error.message) notify(error.message, true); return; }
+    event.dataTransfer.dropEffect = 'move';
+    $('.drag-over, .drop-before').forEach(el => el.classList.remove('drag-over', 'drop-before'));
     column.classList.add('drag-over'); const card = event.target.closest('.card'); if (card && card.dataset.issue !== draggingId) card.classList.add('drop-before');
   });
   $('#view-content').addEventListener('dragend', () => {
@@ -2186,8 +2252,10 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     let rank;
     if (targetIndex >= 0) rank = (neighbors[targetIndex].rank + (targetIndex ? neighbors[targetIndex - 1].rank : 0)) / 2;
     else rank = (neighbors.at(-1)?.rank || 0) + 1000;
-    const parentId = issue.type === 'Epic' ? issue.parentId : (laneId || (!state.swimlanes ? issue.parentId : ''));
-    try { await persist({ ...issue, status: column.dataset.status, parentId, rank }, issue.version, 'Board updated', 'moveIssue'); }
+    try {
+      const parentId = boardMoveParent(issue, state.swimlanes ? laneId : boardEpicId(issue));
+      await saveBoardMove(issue, column.dataset.status, parentId, rank);
+    }
     catch (error) { notify(error.message, true); }
   });
   $('#view-content').addEventListener('pointerdown', event => {
