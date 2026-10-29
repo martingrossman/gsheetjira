@@ -56,7 +56,7 @@
 .gantt-story-toggle{flex:0 0 18px;width:18px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line);border-radius:4px;background:var(--surface-muted);color:var(--ink);font-size:12px;line-height:1;cursor:pointer}.gantt-story-toggle:hover,.gantt-story-toggle:focus-visible{border-color:var(--primary);background:var(--primary-soft);color:var(--primary);outline:none}.gantt-row-label.has-story-toggle .gantt-label-hit{padding-left:var(--row-label-indent,0px)}
 .gantt-comment-preview{pointer-events:none}
 </style>
-<style>.dialog-actions{align-items:center;flex-wrap:wrap}#form-save-status{margin-right:6px;color:var(--muted);font-size:10px;min-width:74px}#form-save-status.error{color:var(--red)}</style>
+<style>.dialog-actions{align-items:center;flex-wrap:wrap}#form-save-status{margin-right:6px;color:var(--muted);font-size:10px;min-width:74px}#form-save-status.error{color:var(--red)}.draft-recovery-item .error-actions{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}.draft-recovery-item .button{margin:0;min-height:40px;font-size:12px}.draft-recovery-item textarea{display:block;width:100%;margin-top:8px;font-size:12px}.draft-recovery-item p{white-space:pre-wrap}</style>
 <style>
 .quick-entry #bulk-create-open{height:34px;font-size:10px;white-space:nowrap}
 .bulk-create-dialog{width:620px}
@@ -106,6 +106,7 @@
       <div id="active-filter-chips" class="active-filter-chips" hidden></div>
       <div id="filter-context" class="filter-context" hidden></div>
       <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      <section id="draft-recovery" aria-label="Unsaved work" hidden></section>
       <section id="view-content" aria-label="Project issues"><div class="empty-state"><div class="loader"></div><h2>Getting your workspace ready</h2><p>Your issues will appear here.</p></div></section>
       <footer class="view-footer"><span id="view-hint"></span><span class="footer-wordmark">MADE FOR MOVING FORWARD <span>↗</span></span></footer>
     </main>
@@ -113,7 +114,7 @@
   <dialog id="issue-dialog" class="issue-dialog" aria-labelledby="dialog-title">
     <form id="issue-form">
       <div class="dialog-header"><div><span id="dialog-id" class="eyebrow">NEW ISSUE</span><h2 id="dialog-title">Make the next move.</h2></div><button type="button" id="close-dialog" class="icon-button" aria-label="Close issue">×</button></div>
-      <div class="form-body"><div id="form-error" class="error-banner" role="alert" hidden></div>
+      <div class="form-body"><div id="form-error" class="error-banner" role="alert" hidden></div><section id="form-draft-recovery" aria-label="Draft recovery" hidden></section>
         <label class="field">Summary <input name="summary" required maxlength="250" placeholder="What needs to happen?"></label>
         <label class="field">Description <textarea name="description" rows="4" maxlength="20000" placeholder="Add context, acceptance criteria, or helpful links…"></textarea></label>
         <label class="field">Activity type<select name="taskTypeId"></select></label>
@@ -538,7 +539,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     delete state.drafts[key]; localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
   }
   function withDraft(issue) {
-    const draft = issue && state.drafts[issue.id]; return draft ? { ...issue, ...issueValues(draft.input) } : issue;
+    const draft = issue && state.drafts[issue.id]; return draft ? { ...issue, ...issueValues(draft.input), version: draft.version } : issue;
   }
   // Operation identity belongs to an immutable submission, never to a displayed issue.
   function issueValues(input) { const { operationId, _draftKey, ...values } = input; return values; }
@@ -700,7 +701,9 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (!error && ['Synced with Sheets', 'Saved in this browser'].includes(text)) {
       if (hasPendingSaves()) text = 'Saving…';
       else if (state.quickQueue.length) text = 'Work item queued…';
-      else if (Object.keys(state.drafts).length || state.bulkDraft || state.bulkEditDraft || state.pendingDuplicate) { text = 'Save unconfirmed'; error = true; }
+      else if (Object.keys(state.drafts).length || state.bulkDraft || state.bulkEditDraft || state.pendingDuplicate) {
+        text = Object.values(state.drafts).some(draft => draft.status === 'conflict') ? 'Conflict · draft kept' : Object.values(state.drafts).some(draft => draft.error) ? 'Failed · draft kept' : 'Save unconfirmed'; error = true;
+      }
     }
     $('#sync-status').textContent = text; $('#sync-status').classList.toggle('error', error);
   }
@@ -893,42 +896,75 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       $('#bulk-edit-error').textContent = `${error.message || String(error)} Retry to safely check the same operation.`; $('#bulk-edit-error').hidden = false; $('#bulk-edit-status').textContent = 'Save status unknown';
     } finally { state.activeSaves = Math.max(0, state.activeSaves - 1); button.disabled = false; renderBulkEditPreview(); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); }
   }
-  function showError(error, draftKeyOverride = '') {
-    const failedDraftKey = draftKeyOverride || draftStorageKeyFor(edited?.id);
-    const conflict = /changed elsewhere|conflict|stale|revision/i.test(error.message || String(error));
-    $('#error-banner').innerHTML = `${escape(error.message || String(error))} <div class="error-actions"><button class="button subtle" id="retry-save" type="button">Retry</button>${conflict ? '<button class="button subtle" id="compare-save" type="button">Compare with latest</button><button class="button subtle" id="discard-draft" type="button">Discard draft</button>' : ''}</div>`; $('#error-banner').hidden = false;
-    $('#retry-save')?.addEventListener('click', async () => {
-      const draft = state.drafts[failedDraftKey] || Object.values(state.drafts)[0]; if (!draft) return;
-      const session = formSession;
-      try {
-      const saved = await persist(draft.input, draft.version, 'Issue saved', 'saveIssue', { retry: true });
-        if (saved && dialog.open && formSession === session && (!edited || edited.id === saved.id)) { edited = saved; initialForm = formSnapshot(); setFormSaveStatus('Saved'); }
-      } catch (ignore) {}
-    });
-    $('#compare-save')?.addEventListener('click', async () => {
-      const key = failedDraftKey, draft = state.drafts[key]; if (!draft) return;
-      try {
-        const project = await rpc('getProject'), latest = project.issues.find(issue => issue.id === (draft.input.id || key));
-        if (!latest) { notify('No saved version exists yet. Your draft is still available.', true); return; }
-        const changes = C.fields.filter(field => String(draft.input[field.key] ?? '') !== String(latest[field.key] ?? ''))
-          .map(field => `${field.label || field.key}:\n  Your draft: ${String(draft.input[field.key] ?? '').slice(0, 180) || '(empty)'}\n  Latest: ${String(latest[field.key] ?? '').slice(0, 180) || '(empty)'}`);
-        const message = changes.length ? `Differences for ${latest.id}:\n\n${changes.join('\n\n')}\n\nLoad the latest version and discard this local draft?` : `No field differences were found for ${latest.id}. Load the latest version and discard this local draft?`;
-        if (!confirm(message)) return;
-        clearDraft(latest.id); state.issues = state.issues.map(issue => issue.id === latest.id ? latest : issue); render(); openIssue(latest.id);
-        $('#error-banner').hidden = true;
-      } catch (compareError) { notify(`Could not compare: ${compareError.message}`, true); }
-    });
-    $('#discard-draft')?.addEventListener('click', async () => {
-      const key = failedDraftKey, draft = state.drafts[key]; if (!draft) return;
-      if (!confirm('Discard this saved local draft?')) return;
-      clearDraft(key);
-      if (draft.input.id) {
-        try { const project = await rpc('getProject'), latest = project.issues.find(issue => issue.id === draft.input.id); if (latest) state.issues = state.issues.map(issue => issue.id === latest.id ? latest : issue); }
-        catch (ignore) {}
+  function draftStatus(key, draft) {
+    if (state.saveQueues[saveQueueKeyFor(key)]) return 'Saving…';
+    if (draft.status === 'conflict' || /changed elsewhere|conflict|stale|revision/i.test(draft.error || '')) return 'Conflict · draft kept';
+    return draft.error ? 'Failed · draft kept' : 'Save unconfirmed · draft kept';
+  }
+  function recoveryMarkup(key, draft, primary = false) {
+    const saving = Boolean(state.saveQueues[saveQueueKeyFor(key)]);
+    const button = (action, label, disabled = false) => `<button type="button" class="button subtle" data-recovery-action="${action}" ${primary && ['retry', 'compare', 'discard'].includes(action) ? `id="${{ retry: 'retry-save', compare: 'compare-save', discard: 'discard-draft' }[action]}"` : ''} ${disabled ? 'disabled' : ''}>${label}</button>`;
+    return `<div class="error-banner draft-recovery-item" data-recovery-key="${escape(key)}"><strong>${escape(draft.input.id || 'New issue')} · ${escape(draftStatus(key, draft))}</strong><p>${escape(draft.input.summary || issueById(key)?.summary || '')}</p>${draft.error ? `<p>${escape(draft.error)}</p>` : ''}<div class="error-actions">${button('retry', 'Retry', saving)}${button('copy', 'Copy draft')}${button('compare', 'Compare with latest', saving || !draft.input.id)}${button('discard', 'Discard draft', saving)}</div><label hidden>Draft text — select and copy<textarea readonly rows="6" aria-label="Draft text"></textarea></label></div>`;
+  }
+  function renderDraftRecovery() {
+    const drafts = Object.entries(state.drafts).filter(([key, draft]) => !key.startsWith('quick-') || draft.input.id);
+    const workspace = $('#draft-recovery');
+    const markup = drafts.map(([key, draft], index) => recoveryMarkup(key, draft, index === 0)).join('');
+    if (workspace.dataset.markup !== markup) { workspace.innerHTML = markup; workspace.dataset.markup = markup; }
+    workspace.hidden = !drafts.length;
+    const panel = $('#form-draft-recovery'), key = draftStorageKeyFor(edited?.id), draft = state.drafts[key];
+    const formMarkup = dialog.open && draft ? recoveryMarkup(key, draft) : '';
+    if (panel.dataset.markup !== formMarkup) { panel.innerHTML = formMarkup; panel.dataset.markup = formMarkup; }
+    panel.hidden = !formMarkup;
+    if (dialog.open && draft && !formSaveTimer && formSnapshot() === initialForm) setFormSaveStatus(draftStatus(key, draft), !state.saveQueues[saveQueueKeyFor(key)]);
+  }
+  async function recoverDraft(event) {
+    const button = event.target.closest('[data-recovery-action]'); if (!button) return;
+    const row = button.closest('[data-recovery-key]'), key = row.dataset.recoveryKey, draft = state.drafts[key];
+    if (!draft) return;
+    const action = button.dataset.recoveryAction;
+    if (action === 'copy') {
+      const textarea = row.querySelector('textarea'); textarea.value = JSON.stringify(draft.input, null, 2); textarea.parentElement.hidden = false; textarea.focus(); textarea.select();
+      try { await navigator.clipboard.writeText(textarea.value); notify('Draft copied'); }
+      catch (ignore) { notify('Select and copy the draft text below.'); }
+      return;
+    }
+    if (state.saveQueues[saveQueueKeyFor(key)]) return;
+    if (dialog.open && (formSaveTimer || formSnapshot() !== initialForm)) { notify('Finish the current edit before recovering this draft.', true); return; }
+    const session = formSession;
+    const stillCurrent = () => state.drafts[key] === draft && !state.saveQueues[saveQueueKeyFor(key)] && (!dialog.open || (formSession === session && !formSaveTimer && formSnapshot() === initialForm));
+    try {
+      if (action === 'retry') {
+        const saved = await persist(draft.input, draft.version, 'Issue saved', draft.mutation || 'saveIssue', { retry: true });
+        if (saved && dialog.open && formSession === session && draftStorageKeyFor(edited?.id) === key && !state.drafts[saved.id] && !formSaveTimer && formSnapshot() === initialForm) openIssue(saved.id);
+        return;
       }
-      render(); if (draft.input.id && dialog.open) openIssue(draft.input.id); else if (dialog.open) closeIssue();
-      $('#error-banner').hidden = true;
-    });
+      // Fetch before clearing: a failed read must not destroy the only recoverable copy.
+      const project = draft.input.id ? await rpc('getProject') : null;
+      if (!stillCurrent()) return;
+      if (project && !Array.isArray(project.issues)) throw new Error('No valid project data returned.');
+      const latest = project?.issues.find(issue => issue.id === draft.input.id);
+      let message = 'Discard this saved local draft? This does not undo a save already received by the server.';
+      if (action === 'compare') {
+        if (!latest) { notify('No saved version exists. Your draft is still available to copy or discard.', true); return; }
+        const changes = C.fields.filter(field => Object.hasOwn(draft.input, field.key) && String(draft.input[field.key] ?? '') !== String(latest[field.key] ?? ''))
+          .map(field => `${field.label || field.key}:\n  Your draft: ${String(draft.input[field.key] ?? '') || '(empty)'}\n  Latest: ${String(latest[field.key] ?? '') || '(empty)'}`);
+        message = `${changes.length ? `Differences for ${latest.id}:\n\n${changes.join('\n\n')}` : `No field differences for ${latest.id}.`}\n\nLoad the latest version and discard this local draft? Cancel keeps your draft.`;
+      }
+      if (!confirm(message) || !stillCurrent()) return;
+      clearDraft(key);
+      if (draft.input.id) state.issues = latest ? state.issues.map(issue => issue.id === latest.id ? latest : issue) : state.issues.filter(issue => issue.id !== draft.input.id);
+      if (dialog.open && formSession === session && draftStorageKeyFor(edited?.id) === key) {
+        if (latest) openIssue(latest.id);
+        else { dialog.close(); edited = null; formSession++; }
+      }
+      render(); renderDraftRecovery(); syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser');
+    } catch (error) { notify(`Could not ${action}: ${error.message}`, true); }
+  }
+  $('#draft-recovery').addEventListener('click', recoverDraft);
+  $('#form-draft-recovery').addEventListener('click', recoverDraft);
+  function showError(error) {
+    $('#error-banner').textContent = error.message || String(error); $('#error-banner').hidden = false;
     syncText('Could not sync', true);
   }
   async function refresh(quiet = false) {
@@ -966,6 +1002,8 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const before = input.id ? issueById(input.id) : null, undoBefore = before ? undoSnapshot(before) : null;
     if (quickCreate) quickSavesInFlight.add(queueKey);
     saveDraft(requestInput, version, operationId);
+    state.drafts[draftKeyNow].mutation = mutation;
+    localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
     if (initialCreate) {
       state.drafts[draftKeyNow].initialCreate = initialCreate;
       localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
@@ -989,6 +1027,11 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
           state.pendingCreateIds[queueKey] = resolvedId;
         }
         const effectiveInput = resolvedId ? { ...requestInput, id: resolvedId } : requestInput;
+        const submittedDraft = state.drafts[effectiveDraftKey] || state.drafts[queueKey];
+        if (submittedDraft?.operationId === operationId) {
+          submittedDraft.version = expectedVersion;
+          localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
+        }
         const result = mutation === 'moveIssue' && isCloud
           ? await rpc('moveIssue', effectiveInput.id, { status: effectiveInput.status, parentId: effectiveInput.parentId, rank: effectiveInput.rank, operationId }, expectedVersion, operationId)
           : await rpc('saveIssue', effectiveInput, expectedVersion);
@@ -1011,24 +1054,27 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
         syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser'); render(); notify(message);
         return result;
       } catch (error) {
-        if (quickCreate) {
-          if (state.drafts[effectiveDraftKey]) {
-            state.drafts[effectiveDraftKey].error = error.message || String(error);
-            localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
-          }
-          render(); syncText('Could not sync', true);
-        } else showError(error, effectiveDraftKey);
+        const failedDraft = state.drafts[effectiveDraftKey] || state.drafts[queueKey];
+        if (failedDraft?.operationId === operationId) {
+          failedDraft.error = error.message || String(error);
+          failedDraft.status = /changed elsewhere|conflict|stale|revision/i.test(failedDraft.error) ? 'conflict' : 'failed';
+          localStorage.setItem(draftStorageKey, JSON.stringify(state.drafts));
+        }
+        if (quickCreate) render();
+        renderDraftRecovery();
         throw error;
       }
       finally { quickSavesInFlight.delete(queueKey); state.activeSaves = Math.max(0, state.activeSaves - 1); queueMicrotask(drainQuickQueue); }
     });
     state.saveQueues[queueKey] = job;
+    renderDraftRecovery();
     job.finally(() => {
       if (state.saveQueues[queueKey] === job) {
         delete state.saveQueues[queueKey];
         delete state.pendingCreateIds[queueKey];
       }
       syncText(isCloud ? 'Synced with Sheets' : 'Saved in this browser');
+      renderDraftRecovery();
       queueMicrotask(drainQuickQueue);
     }).catch(() => {});
     return job;
@@ -1191,6 +1237,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   }
   function render() {
     if (!state.ready) return;
+    renderDraftRecovery();
     const quickEntryState = state.view === 'kanban' ? captureBoardQuickEntries() : null;
     const ganttEntryState = state.view === 'gantt' ? captureGanttQuickEntry() : null;
     if (state.view !== 'gantt') closeGanttQuickPopover();
@@ -1741,7 +1788,9 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const original = id ? issueById(id) : null;
     if (id && !original) return;
     edited = original ? { ...original } : null; epicDateFormValues = null;
-    const issue = { ...C.blank(), ...(original || defaults) };
+    const restoredDraft = state.drafts[id || '__new__'];
+    const issue = { ...C.blank(), ...(original || defaults), ...(restoredDraft ? issueValues(restoredDraft.input) : {}) };
+    if (edited && restoredDraft) edited.version = restoredDraft.version;
     $('#dialog-id').textContent = id || 'NEW ISSUE'; $('#dialog-title').textContent = id ? 'A little more detail.' : 'Make the next move.';
     form.elements.type.innerHTML = options(C.types, issue.type);
     form.elements.taskTypeId.innerHTML = options(activityTypes(), issue.taskTypeId || 'algo');
@@ -1763,6 +1812,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     renderComments(id);
     if (formSaveTimer) clearTimeout(formSaveTimer); formSaveTimer = null;
     initialForm = formSnapshot(); setFormSaveStatus(id ? 'Saved' : 'Not saved'); if (!dialog.open) dialog.showModal(); form.elements.summary.focus();
+    renderDraftRecovery();
     loadIssueComments(id, formSession);
   }
   function closeIssue() {
@@ -1815,7 +1865,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
           updateEpicDateFields(); initialForm = formSnapshot(); setFormSaveStatus('Saved');
         } else setFormSaveStatus('Unsaved changes');
       }
-    } catch (error) { if (dialog.open && formSession === session) setFormSaveStatus('Save failed · draft kept', true); }
+    } catch (error) { if (dialog.open && formSession === session) renderDraftRecovery(); }
   }
   async function saveForm(event) {
     event.preventDefault(); if (state.busy || !form.reportValidity()) return;
@@ -1824,21 +1874,22 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
       const session = formSession, key = saveQueueKeyFor(edited?.id), draftKeyValue = draftStorageKeyFor(edited?.id), pending = state.saveQueues[key], draft = state.drafts[draftKeyValue];
       if (!pending && !draft) { dialog.close(); edited = null; formSession++; return; }
       try {
-        const saved = pending ? await pending : await persist(draft.input, draft.version, 'Issue saved', 'saveIssue', { retry: true });
+        const saved = pending ? await pending : await persist(draft.input, draft.version, 'Issue saved', draft.mutation || 'saveIssue', { retry: true });
         if (saved && dialog.open && formSession === session && formSnapshot() === initialForm) { dialog.close(); edited = null; formSession++; setFormSaveStatus('Saved'); }
-      } catch (error) { if (dialog.open && formSession === session) setFormSaveStatus('Save failed · draft kept', true); }
+      } catch (error) { if (dialog.open && formSession === session) renderDraftRecovery(); }
       return;
     }
     const data = formInput(), submittedSnapshot = formSnapshot(), session = formSession; setFormSaveStatus('Saving…');
     try {
       C.validate(C.prepare(data, edited, today(), new Date().toISOString()), state.issues);
+      initialForm = submittedSnapshot;
       const saved = await persist(data, edited?.version);
       if (saved && dialog.open && formSession === session && (!edited?.id || edited.id === saved.id)) {
         edited = { ...saved, ...(formSnapshot() === submittedSnapshot ? {} : Object.fromEntries(new FormData(form))) };
         if (formSnapshot() === submittedSnapshot) { setFormSaveStatus('Saved'); dialog.close(); edited = null; formSession++; }
         else setFormSaveStatus('Unsaved changes');
       }
-    } catch (error) { if (dialog.open && formSession === session) { setFormSaveStatus('Save failed · draft kept', true); $('#form-error').textContent = error.message; $('#form-error').hidden = false; $('#form-error').scrollIntoView({ block: 'nearest' }); } }
+    } catch (error) { if (dialog.open && formSession === session) { setFormSaveStatus('Save failed · draft kept', true); renderDraftRecovery(); $('#form-error').textContent = error.message; $('#form-error').hidden = false; $('#form-error').scrollIntoView({ block: 'nearest' }); } }
   }
   function clearFilters() {
     ['query', 'priority', 'tag', 'startAfter', 'dueBefore', 'assignee', 'status', 'sprint', 'epic'].forEach(key => state[key] = '');

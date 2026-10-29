@@ -36,6 +36,7 @@
       <div id="active-filter-chips" class="active-filter-chips" hidden></div>
       <div id="filter-context" class="filter-context" hidden></div>
       <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      <section id="draft-recovery" aria-label="Unsaved work" hidden></section>
       <section id="view-content" aria-label="Project issues"><div class="empty-state"><div class="loader"></div><h2>Getting your workspace ready</h2><p>Your issues will appear here.</p></div></section>
       <footer class="view-footer"><span id="view-hint"></span><span class="footer-wordmark">MADE FOR MOVING FORWARD <span>↗</span></span></footer>
     </main>
@@ -43,7 +44,7 @@
   <dialog id="issue-dialog" class="issue-dialog" aria-labelledby="dialog-title">
     <form id="issue-form">
       <div class="dialog-header"><div><span id="dialog-id" class="eyebrow">NEW ISSUE</span><h2 id="dialog-title">Make the next move.</h2></div><button type="button" id="close-dialog" class="icon-button" aria-label="Close issue">×</button></div>
-      <div class="form-body"><div id="form-error" class="error-banner" role="alert" hidden></div>
+      <div class="form-body"><div id="form-error" class="error-banner" role="alert" hidden></div><section id="form-draft-recovery" aria-label="Draft recovery" hidden></section>
         <label class="field">Summary <input name="summary" required maxlength="250" placeholder="What needs to happen?"></label>
         <label class="field">Description <textarea name="description" rows="4" maxlength="20000" placeholder="Add context, acceptance criteria, or helpful links…"></textarea></label>
         <label class="field">Activity type<select name="taskTypeId"></select></label>
