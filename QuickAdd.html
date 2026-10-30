@@ -39,26 +39,85 @@
     const parentFields = document.getElementById('parent-fields');
     const addButton = document.getElementById('add');
     const message = document.getElementById('message');
-    addButton.disabled = true;
+    let storageKey = '', spreadsheetUrl = '', draft = null, pending = false, ready = false;
+    function setPending(value) {
+      pending = value;
+      titleInput.disabled = kindInput.disabled = parentInput.disabled = value;
+      addButton.disabled = value || !ready;
+    }
+    setPending(true);
     function setMessage(text, error) { message.textContent = text || ''; message.classList.toggle('error', Boolean(error)); }
+    function values() { return { title: titleInput.value, type: kindInput.value, parentId: kindInput.value === 'Epic' ? '' : parentInput.value }; }
+    function signature(value) { return JSON.stringify([value.title.trim(), value.type, value.parentId]); }
+    function remember() {
+      try { sessionStorage.setItem(storageKey, JSON.stringify(draft)); return true; }
+      catch (error) { setMessage('Cannot retain this draft for a safe retry. Enable session storage and try again.', true); return false; }
+    }
+    function captureDraft() {
+      const current = values();
+      const changed = draft && signature(draft) !== signature(current);
+      const uncertain = changed && Boolean(draft.operationId);
+      draft = { ...current, operationId: changed ? '' : draft?.operationId || '' };
+      addButton.textContent = draft.operationId ? 'Retry add' : 'Add item';
+      if (!remember()) return false;
+      if (uncertain) setMessage('Previous submission may already have saved. Changed details will create a new item.', true);
+      return true;
+    }
     function refreshParents(issues) {
       const selected = parentInput.value;
       parentInput.replaceChildren(new Option('No parent', ''));
       issues.filter(issue => issue.type === 'Epic').sort((a, b) => a.rank - b.rank).forEach(issue => parentInput.add(new Option(`${issue.id} · ${issue.summary}`, issue.id)));
-      if (Array.from(parentInput.options).some(option => option.value === selected)) parentInput.value = selected;
+      if (selected && !Array.from(parentInput.options).some(option => option.value === selected)) parentInput.add(new Option(`${selected} (unavailable)`, selected));
+      parentInput.value = selected;
     }
     function syncKind() { parentFields.hidden = kindInput.value === 'Epic'; if (parentFields.hidden) parentInput.value = ''; }
-    kindInput.addEventListener('change', syncKind);
-    google.script.run.withSuccessHandler(project => { refreshParents(project.issues || []); setMessage('Ready'); addButton.disabled = false; titleInput.focus(); }).withFailureHandler(error => { setMessage(error.message || String(error), true); addButton.disabled = false; }).getProject();
+    titleInput.addEventListener('input', () => { if (ready && !pending) captureDraft(); });
+    kindInput.addEventListener('change', () => { syncKind(); if (ready && !pending) captureDraft(); });
+    parentInput.addEventListener('change', () => { if (ready && !pending) captureDraft(); });
+    google.script.run.withSuccessHandler(project => {
+      if (!project?.spreadsheetUrl) { setMessage('Cannot identify this spreadsheet. Reopen the sidebar to try again.', true); return; }
+      spreadsheetUrl = project.spreadsheetUrl;
+      storageKey = `sheetflow.sidebar-draft.v1:${spreadsheetUrl}`;
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+        if (saved !== null) {
+          if (typeof saved.title !== 'string' || !['Task', 'Story', 'Epic'].includes(saved.type) || typeof saved.parentId !== 'string' || typeof saved.operationId !== 'string') throw new Error('Invalid draft');
+          draft = saved;
+        }
+      } catch (error) { setMessage('Cannot read the recovery draft. Keep this sidebar open and check session storage before adding items.', true); return; }
+      refreshParents(project.issues || []);
+      if (draft) {
+        titleInput.value = draft.title; kindInput.value = draft.type;
+        // Retain even a deleted/hidden parent so a retry never changes its payload.
+        if (draft.parentId && !Array.from(parentInput.options).some(option => option.value === draft.parentId)) parentInput.add(new Option(`${draft.parentId} (unavailable)`, draft.parentId));
+        parentInput.value = draft.parentId; syncKind();
+      }
+      ready = true; setPending(false);
+      addButton.textContent = draft?.operationId ? 'Retry add' : 'Add item';
+      setMessage(draft?.operationId ? 'Submission unconfirmed. Retry uses the same request; check the sheet before changing details.' : draft ? 'Draft restored in this tab.' : 'Ready', Boolean(draft?.operationId));
+      titleInput.focus();
+    }).withFailureHandler(error => { setMessage(`${error.message || String(error)} Reopen the sidebar to try loading again.`, true); }).getProject();
     form.addEventListener('submit', event => {
       event.preventDefault();
+      if (pending || !ready) return;
       const title = titleInput.value.trim(); if (!title) { titleInput.focus(); return; }
-      addButton.disabled = true; setMessage('Adding…');
-      const operationId = crypto.randomUUID ? crypto.randomUUID() : `quick-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      if (!captureDraft()) return;
+      if (!draft.operationId) draft.operationId = crypto.randomUUID ? crypto.randomUUID() : `quick-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      if (!remember()) return;
+      const submission = { ...draft };
+      setPending(true); setMessage('Adding…');
       google.script.run.withSuccessHandler(issue => {
-        titleInput.value = ''; setMessage(`${issue.id} added`); addButton.disabled = false; titleInput.focus();
-        google.script.run.withSuccessHandler(project => refreshParents(project.issues || [])).getProject();
-      }).withFailureHandler(error => { setMessage(error.message || String(error), true); addButton.disabled = false; titleInput.focus(); }).quickCreateIssue(title, kindInput.value, parentInput.value, operationId);
+        let cleared = true;
+        try { sessionStorage.removeItem(storageKey); } catch (error) { cleared = false; }
+        draft = null; titleInput.value = ''; addButton.textContent = 'Add item'; setPending(false);
+        setMessage(`${issue.id} added${cleared ? '' : '. Recovery record could not be cleared; a reload may offer this saved request again.'}`, !cleared);
+        titleInput.focus();
+        // Updating choices must not overwrite a newly entered draft's parent.
+        google.script.run.withSuccessHandler(project => { if (project?.spreadsheetUrl === spreadsheetUrl && !pending) refreshParents(project.issues || []); }).withFailureHandler(() => {}).getProject();
+      }).withFailureHandler(error => {
+        setPending(false); addButton.textContent = 'Retry add';
+        setMessage(`${error.message || String(error)} Submission unconfirmed; retry keeps the same request.`, true); titleInput.focus();
+      }).quickCreateIssue(title, submission.type, submission.parentId, submission.operationId);
     });
     syncKind();
   </script>
