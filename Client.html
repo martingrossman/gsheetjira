@@ -897,18 +897,11 @@
     if (state.view !== 'gantt') closeGanttQuickPopover();
     renderSavedViews();
     renderFilters();
-    $$('[data-view]').forEach(el => { const active = el.dataset.view === state.view; el.classList.toggle('active', active); if (el.getAttribute('role') === 'tab') { el.setAttribute('aria-selected', String(active)); el.setAttribute('aria-controls', 'view-content'); } });
+    $$('[data-view]').forEach(el => { const active = el.dataset.view === state.view; el.classList.toggle('active', active); if (active) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current'); if (el.getAttribute('role') === 'tab') { el.setAttribute('aria-selected', String(active)); el.setAttribute('aria-controls', 'view-content'); } });
     const swimlanesToggle = $('#swimlanes-toggle');
     if (swimlanesToggle) swimlanesToggle.checked = state.swimlanes;
-    const issues = filtered(), done = issues.filter(i => i.status === 'Done').length;
-    const progress = issues.length ? Math.round(done / issues.length * 100) : 0;
-    const overdue = issues.filter(i => { const dueDate = effectiveDates(i).dueDate; return dueDate && dueDate < today() && i.status !== 'Done'; }).length;
-    $('#stats').innerHTML = [
-      ['stack', 'Total issues', issues.length, `${issues.filter(i => i.type === 'Epic').length} epics`, ''],
-      ['circle', 'In progress', issues.filter(i => i.status === 'In Progress').length, 'Making moves', ''],
-      ['check', 'Completed', done, `${progress}% complete`, 'positive'],
-      ['flag', 'Overdue', overdue, overdue ? 'Needs attention' : 'Right on track', overdue ? '' : 'positive']
-    ].map(s => `<div class="stat"><div class="stat-label">${icon(s[0])}${s[1]}</div><div class="stat-bottom"><span class="stat-number">${s[2]}</span><span class="stat-note ${s[4]}">${s[3]}</span></div></div>`).join('');
+    const issues = filtered();
+    $('#view-title').textContent = { sheet: 'Sheet', kanban: 'Kanban', gantt: 'Gantt' }[state.view];
     $('#epic-nav').innerHTML = state.issues.filter(i => i.type === 'Epic').map(i => `<button data-epic="${escape(i.id)}" class="${state.epic === i.id ? 'active' : ''}" title="${escape(i.summary)}"><span class="epic-dot"></span><span class="epic-name">${escape(i.summary)}</span></button>`).join('') || '<span class="nav-caption">No epics yet</span>';
     $('#issue-count').textContent = `${issues.length} of ${state.issues.length} issues`;
     $('#view-hint').textContent = { kanban: 'Drag cards to move work forward. Click a card for the details.', sheet: sheetDragHelp(), gantt: 'Double-click labels or bars to edit. Drag bars to reschedule; Epic spans follow child schedules.' }[state.view];
@@ -1942,9 +1935,9 @@
   $('#view-content').addEventListener('pointercancel', event => { if (!endGanttResize(event)) endTimeline(event, true); });
   window.addEventListener('resize', () => { if (state.view === 'gantt') applyGanttLabelWidth(state.ganttLabelWidth); });
   document.addEventListener('keydown', event => {
-    if (event.ctrlKey || event.metaKey || event.altKey || event.target.matches('input,textarea,select') || $('dialog[open]')) return;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing || event.key === 'Process' || event.target.isContentEditable || event.target.matches('input,textarea,select') || $('dialog[open]')) return;
     if (event.key === '/') { event.preventDefault(); $('#search').focus(); }
-    else if (event.key.toLowerCase() === 'n') openIssue();
+    else if (event.key.toLowerCase() === 'n') { event.preventDefault(); openIssue(); }
     else if (['1', '2', '3'].includes(event.key)) setView(['sheet', 'kanban', 'gantt'][Number(event.key) - 1]);
   });
   window.addEventListener('beforeunload', event => { if (state.busy || hasPendingSaves() || (dialog.open && formSnapshot() !== initialForm)) { event.preventDefault(); event.returnValue = ''; } });

@@ -16,11 +16,45 @@ const initial = [
 ].map((issue, index) => ({ ...C.blank(), ...issue, rank: (index + 1) * 1000, createdAt: '2026-10-20T08:00:00.000Z', updatedAt: '2026-10-20T08:00:00.000Z', version: `${issue.id}-v1` }));
 
 test.beforeEach(async ({ page }) => {
+  // Keep native drag diagnostics on failure without replacing the real mouse gesture.
+  await page.addInitScript(() => {
+    window.__sheetDragEvents = [];
+    for (const type of ['mousedown', 'mouseup', 'dragstart', 'dragenter', 'dragover', 'drop', 'dragend', 'scroll']) {
+      document.addEventListener(type, event => {
+        const target = event.target instanceof Element ? event.target : null;
+        const table = document.querySelector('.table-wrap');
+        window.__sheetDragEvents.push({
+          type, target: target?.id || target?.tagName || 'document',
+          row: target?.closest('[data-sheet-row-id]')?.dataset.sheetRowId,
+          epic: target?.closest('[data-sheet-parent-target]')?.dataset.sheetParentTarget,
+          grip: target?.closest('[data-sheet-drag-id]')?.dataset.sheetDragId,
+          x: event.clientX, y: event.clientY,
+          pageScroll: window.scrollY, tableScroll: table?.scrollTop
+        });
+        if (window.__sheetDragEvents.length > 150) window.__sheetDragEvents.shift();
+      }, { capture: true, passive: true });
+    }
+  });
   await page.addInitScript(({ key, issues }) => {
     if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ issues, comments: [], sequence: 10 }));
   }, { key: projectKey, issues: initial });
   await page.goto('/#sheet');
   await expect(page.locator('[data-sheet-row-id="PRJ-2"]')).toBeVisible();
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus || page.isClosed()) return;
+  const diagnostics = await page.evaluate(() => ({
+    events: window.__sheetDragEvents || [],
+    hint: document.querySelector('#view-hint')?.textContent,
+    toast: document.querySelector('#toast')?.textContent,
+    rows: Array.from(document.querySelectorAll('[data-sheet-row-id]'), row => ({
+      id: row.dataset.sheetRowId, parent: row.dataset.sheetParent
+    }))
+  })).catch(error => ({ error: error.message }));
+  const body = JSON.stringify(diagnostics, null, 2);
+  await testInfo.attach('sheet-drag-events', { body, contentType: 'application/json' });
+  console.log('Sheet drag diagnostics:', body);
 });
 
 const row = (page, id) => page.locator(`[data-sheet-row-id="${id}"]`);
@@ -30,10 +64,33 @@ const rawProject = page => page.evaluate(key => localStorage.getItem(key), proje
 const original = id => initial.find(issue => issue.id === id);
 const businessValues = ({ parentId, rank, updatedAt, version, ...issue }) => issue;
 
+async function dropOnSheetTarget(page, sourceId, target, edge = 'center') {
+  // Start the native drag before scrolling: after a move, the source and
+  // destination may no longer fit in the viewport together.
+  const source = grip(page, sourceId);
+  await source.scrollIntoViewIfNeeded();
+  const sourceBox = await source.boundingBox();
+  const x = sourceBox.x + sourceBox.width / 2, y = sourceBox.y + sourceBox.height / 2;
+  const dragStarts = () => page.evaluate(id => window.__sheetDragEvents.filter(event => event.type === 'dragstart' && event.grip === id).length, sourceId);
+  const previousStarts = await dragStarts();
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  try {
+    await page.mouse.move(x + 10, y, { steps: 5 });
+    await expect.poll(dragStarts).toBeGreaterThan(previousStarts);
+    await target.scrollIntoViewIfNeeded();
+    const box = await target.boundingBox();
+    const targetX = box.x + 80, targetY = box.y + (edge === 'before' ? 2 : edge === 'after' ? box.height - 2 : box.height / 2);
+    await page.mouse.move(targetX, targetY, { steps: 5 });
+    // A second move delivers dragover after dragenter before releasing.
+    await page.mouse.move(targetX, targetY);
+  } finally {
+    await page.mouse.up();
+  }
+}
+
 async function dropOnRow(page, sourceId, targetId, edge = 'center') {
-  const target = row(page, targetId);
-  const box = await target.boundingBox();
-  await grip(page, sourceId).dragTo(target, { targetPosition: { x: 80, y: edge === 'before' ? 2 : edge === 'after' ? box.height - 2 : box.height / 2 } });
+  await dropOnSheetTarget(page, sourceId, row(page, targetId), edge);
 }
 
 async function openAfterDrop(page, id) {
@@ -79,7 +136,7 @@ test('dropping on a collapsed Epic expands the destination and reveals its moved
   const header = page.locator('[data-sheet-parent-target="PRJ-7"]');
   await header.locator('[data-toggle-lane="PRJ-7"]').click();
   await expect(row(page, 'PRJ-8')).toBeHidden();
-  await grip(page, 'PRJ-2').dragTo(header);
+  await dropOnSheetTarget(page, 'PRJ-2', header);
   await expect(header.locator('[data-toggle-lane="PRJ-7"]')).toHaveAttribute('aria-expanded', 'true');
   await expect(row(page, 'PRJ-2')).toHaveAttribute('data-sheet-parent', 'PRJ-7');
   await expect(row(page, 'PRJ-3')).toBeVisible();
@@ -88,7 +145,7 @@ test('dropping on a collapsed Epic expands the destination and reveals its moved
 });
 
 test('dropping a Story on another Epic header moves its complete subtree into that lane', async ({ page }) => {
-  await grip(page, 'PRJ-2').dragTo(page.locator('[data-sheet-parent-target="PRJ-7"]'));
+  await dropOnSheetTarget(page, 'PRJ-2', page.locator('[data-sheet-parent-target="PRJ-7"]'));
   await expect(row(page, 'PRJ-2')).toHaveAttribute('data-sheet-parent', 'PRJ-7');
   const lane = page.locator('[data-sheet-parent-target="PRJ-7"]').locator('xpath=ancestor::tbody');
   for (const id of ['PRJ-2', 'PRJ-3', 'PRJ-4', 'PRJ-10']) await expect(lane.locator(`[data-sheet-row-id="${id}"]`)).toBeVisible();
