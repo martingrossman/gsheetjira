@@ -199,6 +199,31 @@ main{padding:16px 24px;min-width:0}.app-shell{min-width:0}
 }
 </style>
 
+<style>
+/* Quick Create uses the editor's fields and save pipeline without resetting drafts. */
+.issue-dialog.create-dialog{width:720px;max-width:calc(100vw - 32px);height:auto;max-height:85dvh;margin:auto;border:1px solid var(--line);border-radius:var(--radius-panel);overflow:hidden;box-shadow:0 20px 80px #0F172A26}
+.issue-dialog.create-dialog.quick-create{width:520px}
+.create-dialog form{height:auto;max-height:85dvh}
+.create-dialog .dialog-header{padding:16px 20px}
+.create-dialog .dialog-header h2{font-size:20px}
+.create-dialog .form-body{padding:16px 20px;min-height:0;overflow:auto}
+.quick-create .field{margin-bottom:12px}
+.quick-create .field textarea{min-height:72px;height:80px;resize:vertical}
+.quick-create .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
+.quick-create .field input,.quick-create .field select{width:100%}
+.quick-create .create-advanced{display:none}
+.create-dialog .dialog-footer{padding:12px 16px;gap:8px;flex-wrap:wrap}
+.create-dialog .dialog-actions{gap:8px}
+.create-dialog .issue-footer-actions .button{height:36px}
+@media(max-width:520px){
+  .issue-dialog.create-dialog,.issue-dialog.create-dialog.quick-create{width:100%;max-width:100%;height:100dvh;max-height:100dvh;margin:0;border:0;border-radius:0}
+  .create-dialog form{height:100%;max-height:100dvh}
+  .create-dialog .form-body{flex:1}
+  .create-dialog .dialog-header,.create-dialog .form-body{padding:16px}
+  .create-dialog .dialog-footer .button{min-height:44px}
+}
+</style>
+
 </head>
 <body data-initial-view="kanban">
   <aside class="sidebar" aria-label="Workspace navigation">
@@ -234,19 +259,19 @@ main{padding:16px 24px;min-width:0}.app-shell{min-width:0}
       <footer class="view-footer"><span id="view-hint"></span><span class="footer-wordmark">MADE FOR MOVING FORWARD <span>↗</span></span></footer>
     </main>
   </div>
-  <dialog id="issue-dialog" class="issue-dialog" aria-labelledby="dialog-title">
+  <dialog id="issue-dialog" class="issue-dialog" aria-labelledby="dialog-title" tabindex="-1">
     <form id="issue-form">
       <div class="dialog-header"><div><span id="dialog-id" class="eyebrow">NEW ISSUE</span><h2 id="dialog-title">Make the next move.</h2></div><button type="button" id="close-dialog" class="icon-button" aria-label="Close issue">×</button></div>
       <div class="form-body"><div id="form-error" class="error-banner" role="alert" hidden></div><section id="form-draft-recovery" aria-label="Draft recovery" hidden></section>
-        <label class="field">Summary <input name="summary" required maxlength="250" placeholder="What needs to happen?"></label>
+        <label class="field">Summary <input name="summary" required maxlength="250" autocomplete="off" aria-describedby="form-error" placeholder="What needs to happen?"></label>
         <label class="field">Description <textarea name="description" rows="4" maxlength="20000" placeholder="Add context, acceptance criteria, or helpful links…"></textarea></label>
-        <label class="field">Activity type<select name="taskTypeId"></select></label>
-        <div class="form-grid"><label class="field">Issue type<select name="type"></select></label><label class="field">Status<select name="status"></select></label><label class="field">Priority<select name="priority"></select></label><label class="field">Parent issue<select name="parentId"></select></label><label class="field">Assignee<input name="assignee" list="people" maxlength="200" placeholder="Unassigned"></label><label class="field">Reporter<input name="reporter" list="people" maxlength="200" placeholder="Your name"></label><label class="field">Start date<input name="startDate" type="date" min="1900-01-01" max="2200-12-31"><small class="derived-date-note" hidden>Derived from scheduled child issues; edit their dates to adjust.</small></label><label class="field">Due date<input name="dueDate" type="date" min="1900-01-01" max="2200-12-31"><small class="derived-date-note" hidden>Derived from scheduled child issues; edit their dates to adjust.</small></label><label class="field">Estimate (hours)<input name="estimate" type="number" min="0" step="0.25"></label><label class="field">Time spent (hours)<input name="timeSpent" type="number" min="0" step="0.25"></label><label class="field">Progress (%)<input name="progress" type="number" min="0" max="100" step="1"></label><label class="field">Sprint<input name="sprint" list="sprints" maxlength="200" placeholder="e.g. Sprint 01"></label></div>
-        <label class="field">Labels<input name="labels" maxlength="2000" placeholder="design, frontend, research"><small>Separate labels with commas.</small></label>
-        <label class="field">Depends on<input name="dependencies" maxlength="2000" placeholder="PRJ-4, PRJ-5"><small>Issue IDs, separated by commas. Dependencies do not automatically move dates.</small></label>
+        <label class="field create-advanced">Activity type<select name="taskTypeId"></select></label>
+        <div class="form-grid"><label class="field">Issue type<select name="type"></select></label><label class="field">Status<select name="status"></select></label><label class="field">Priority<select name="priority"></select></label><label class="field">Parent issue<select name="parentId"></select></label><label class="field">Assignee<input name="assignee" list="people" maxlength="200" placeholder="Unassigned"></label><label class="field create-advanced">Reporter<input name="reporter" list="people" maxlength="200" placeholder="Your name"></label><label class="field create-advanced">Start date<input name="startDate" type="date" min="1900-01-01" max="2200-12-31"><small class="derived-date-note" hidden>Derived from scheduled child issues; edit their dates to adjust.</small></label><label class="field">Due date<input name="dueDate" type="date" min="1900-01-01" max="2200-12-31"><small class="derived-date-note" hidden>Derived from scheduled child issues; edit their dates to adjust.</small></label><label class="field create-advanced">Estimate (hours)<input name="estimate" type="number" min="0" step="0.25"></label><label class="field create-advanced">Time spent (hours)<input name="timeSpent" type="number" min="0" step="0.25"></label><label class="field create-advanced">Progress (%)<input name="progress" type="number" min="0" max="100" step="1"></label><label class="field create-advanced">Sprint<input name="sprint" list="sprints" maxlength="200" placeholder="e.g. Sprint 01"></label></div>
+        <label class="field create-advanced">Labels<input name="labels" maxlength="2000" placeholder="design, frontend, research"><small>Separate labels with commas.</small></label>
+        <label class="field create-advanced">Depends on<input name="dependencies" maxlength="2000" placeholder="PRJ-4, PRJ-5"><small>Issue IDs, separated by commas. Dependencies do not automatically move dates.</small></label>
         <div id="issue-metadata" class="issue-metadata"></div><div id="comments-section" class="comments-section"></div><div id="child-issues"></div><label id="duplicate-subtasks-option" class="duplicate-subtasks-option" hidden><input id="duplicate-subtasks" type="checkbox"><span id="duplicate-subtasks-label">Also duplicate child issues</span></label>
       </div>
-      <div class="dialog-footer"><div class="issue-footer-actions"><button type="button" id="delete-issue" class="button danger" hidden>Delete issue</button><button type="button" id="duplicate-issue" class="button secondary" hidden title="Duplicate this issue; progress and time spent reset">Duplicate</button></div><div class="dialog-actions"><span id="form-save-status" role="status" aria-live="polite"></span><button type="button" id="cancel-dialog" class="button secondary">Cancel</button><button type="submit" id="save-issue" class="button primary">Save issue</button></div></div>
+      <div class="dialog-footer"><div class="issue-footer-actions"><button type="button" id="create-more-options" class="button subtle" hidden>More options</button><button type="button" id="delete-issue" class="button danger" hidden>Delete issue</button><button type="button" id="duplicate-issue" class="button secondary" hidden title="Duplicate this issue; progress and time spent reset">Duplicate</button></div><div class="dialog-actions"><span id="form-save-status" role="status" aria-live="polite"></span><button type="button" id="cancel-dialog" class="button secondary">Cancel</button><button type="submit" id="save-issue" class="button primary">Save issue</button></div></div>
     </form>
   </dialog>
   <dialog id="bulk-create-dialog" class="help-dialog bulk-create-dialog" aria-labelledby="bulk-create-title">
@@ -535,6 +560,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   let parentOptionIndex = null;
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, sheetDropPreview = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
+  let createStarted = false, issueReturnFocus = null;
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { state.quickQueue = JSON.parse(localStorage.getItem(quickQueueStorageKey) || '[]') || []; } catch (ignore) { state.quickQueue = []; }
   try { state.pendingDuplicate = JSON.parse(localStorage.getItem(duplicateDraftStorageKey) || 'null'); } catch (ignore) { state.pendingDuplicate = null; }
@@ -1965,9 +1991,17 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     if (id && !original) return;
     edited = original ? { ...original } : null; epicDateFormValues = null;
     const restoredDraft = state.drafts[id || '__new__'];
-    const issue = { ...C.blank(), ...(original || defaults), ...(restoredDraft ? issueValues(restoredDraft.input) : {}) };
+    const createDefaults = { parentId: defaults.type === 'Epic' ? '' : state.epic || '', ...defaults };
+    const issue = { ...C.blank(), ...(original || createDefaults), ...(restoredDraft ? issueValues(restoredDraft.input) : {}) };
+    createStarted = Boolean(id || restoredDraft);
     if (edited && restoredDraft) edited.version = restoredDraft.version;
-    $('#dialog-id').textContent = id || 'NEW ISSUE'; $('#dialog-title').textContent = id ? 'A little more detail.' : 'Make the next move.';
+    dialog.classList.toggle('create-dialog', !id);
+    dialog.classList.toggle('quick-create', !id);
+    $('#create-more-options').hidden = Boolean(id);
+    $('#create-more-options').textContent = 'More options';
+    $('#create-more-options').setAttribute('aria-expanded', 'false');
+    $('#save-issue').textContent = id ? 'Save issue' : 'Create';
+    $('#dialog-id').textContent = id || 'NEW ISSUE'; $('#dialog-title').textContent = id ? 'A little more detail.' : 'Create issue';
     form.elements.type.innerHTML = options(C.types, issue.type);
     form.elements.taskTypeId.innerHTML = options(activityTypes(), issue.taskTypeId || 'algo');
     form.elements.status.innerHTML = options(C.statuses, issue.status);
@@ -1987,9 +2021,17 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     $('#duplicate-subtasks-label').textContent = `Also duplicate ${descendantIds.size} descendant ${descendantIds.size === 1 ? 'issue' : 'issues'}`;
     renderComments(id);
     if (formSaveTimer) clearTimeout(formSaveTimer); formSaveTimer = null;
-    initialForm = formSnapshot(); setFormSaveStatus(id ? 'Saved' : 'Not saved'); if (!dialog.open) dialog.showModal(); form.elements.summary.focus();
+    initialForm = formSnapshot(); setFormSaveStatus(id ? 'Saved' : 'Not yet saved');
+    if (!dialog.open) { if (!issueReturnFocus) issueReturnFocus = document.activeElement; dialog.showModal(); }
+    form.elements.summary.focus();
     renderDraftRecovery();
     loadIssueComments(id, formSession);
+  }
+  function setCreateExpanded(expanded) {
+    dialog.classList.toggle('quick-create', !expanded);
+    $('#create-more-options').textContent = expanded ? 'Back to compact' : 'More options';
+    $('#create-more-options').setAttribute('aria-expanded', String(expanded));
+    $('#dialog-title').textContent = expanded ? 'New issue details' : 'Create issue';
   }
   function closeIssue() {
     if (state.busy) return false;
@@ -2025,7 +2067,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   }
   async function autosaveForm() {
     formSaveTimer = null;
-    if (!dialog.open || state.busy || formSnapshot() === initialForm) return;
+    if (!dialog.open || state.busy || (!edited && !createStarted) || formSnapshot() === initialForm) return;
     if (!form.reportValidity()) { setFormSaveStatus('Complete required fields'); return; }
     const data = formInput(), submittedSnapshot = formSnapshot(), session = formSession; initialForm = submittedSnapshot; setFormSaveStatus('Saving…');
     try {
@@ -2046,7 +2088,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   async function saveForm(event) {
     event.preventDefault(); if (state.busy || !form.reportValidity()) return;
     if (formSaveTimer) clearTimeout(formSaveTimer); formSaveTimer = null;
-    if (formSnapshot() === initialForm) {
+    if (formSnapshot() === initialForm && (edited || createStarted)) {
       const session = formSession, key = saveQueueKeyFor(edited?.id), draftKeyValue = draftStorageKeyFor(edited?.id), pending = state.saveQueues[key], draft = state.drafts[draftKeyValue];
       if (!pending && !draft) { dialog.close(); edited = null; formSession++; return; }
       try {
@@ -2058,6 +2100,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const data = formInput(), submittedSnapshot = formSnapshot(), session = formSession; setFormSaveStatus('Saving…');
     try {
       C.validate(C.prepare(data, edited, today(), new Date().toISOString()), state.issues);
+      createStarted = true;
       initialForm = submittedSnapshot;
       const saved = await persist(data, edited?.version);
       if (saved && dialog.open && formSession === session && (!edited?.id || edited.id === saved.id)) {
@@ -2119,10 +2162,12 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $('#clear-filters').addEventListener('click', clearFilters);
   form.addEventListener('input', event => {
     if (!event.target.matches('input[type="text"], input:not([type]), textarea')) return;
+    if (!edited && !createStarted) { setFormSaveStatus('Not yet saved'); return; }
     if (formSaveTimer) clearTimeout(formSaveTimer); setFormSaveStatus('Unsaved changes'); formSaveTimer = setTimeout(autosaveForm, 700);
   });
   form.addEventListener('change', event => {
     if (!event.target.matches('select, input[type="date"], input[type="number"]')) return;
+    if (!edited && !createStarted) { setFormSaveStatus('Not yet saved'); return; }
     if (formSaveTimer) clearTimeout(formSaveTimer); setFormSaveStatus('Saving…'); formSaveTimer = setTimeout(autosaveForm, 0);
   });
   $('#swimlanes-toggle').addEventListener('change', event => { setSwimlanes(event.target.checked); render(); });
@@ -2134,8 +2179,41 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     const a = document.createElement('a'); a.href = url; a.download = `sheetflow-issues-${today()}.csv`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('#close-dialog').addEventListener('click', closeIssue); $('#cancel-dialog').addEventListener('click', closeIssue);
+  $('#create-more-options').addEventListener('click', () => {
+    const expanded = dialog.classList.contains('quick-create');
+    setCreateExpanded(expanded);
+    (expanded ? form.elements.taskTypeId : form.elements.summary).focus();
+  });
   $('#duplicate-issue').addEventListener('click', duplicateOpenIssue);
   dialog.addEventListener('cancel', event => { event.preventDefault(); closeIssue(); });
+  dialog.addEventListener('keydown', event => {
+    if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+    const controls = Array.from(dialog.querySelectorAll('button,input,select,textarea,a[href],[tabindex]'))
+      .filter(element => element.tabIndex >= 0 && !element.matches(':disabled') && element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden');
+    const first = controls[0], last = controls[controls.length - 1];
+    if (!first) { event.preventDefault(); dialog.focus(); return; }
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog)) {
+      event.preventDefault(); first.focus();
+    }
+  });
+  dialog.addEventListener('close', () => {
+    if (dialog.open) return;
+    const target = issueReturnFocus?.isConnected && !issueReturnFocus.disabled ? issueReturnFocus : $('#create-issue');
+    issueReturnFocus = null; target?.focus({ preventScroll: true });
+  });
+  form.addEventListener('invalid', event => {
+    if (dialog.classList.contains('quick-create') && event.target.closest('.create-advanced')) setCreateExpanded(true);
+  }, true);
+  form.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    if (event.isComposing || event.keyCode === 229) { event.preventDefault(); return; }
+    if (event.altKey) return;
+    if (((event.ctrlKey || event.metaKey) && !event.shiftKey) || (event.target === form.elements.summary && !event.ctrlKey && !event.metaKey && !event.shiftKey)) {
+      event.preventDefault(); form.requestSubmit();
+    }
+  });
   form.addEventListener('submit', saveForm);
   form.elements.type.addEventListener('change', () => {
     const selected = form.elements.parentId.value;

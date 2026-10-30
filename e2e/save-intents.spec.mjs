@@ -119,6 +119,7 @@ test('local successive edits survive reload without transient operation metadata
 for (const outcome of ['ok', 'lost']) test(`new issue edits reconcile the original create after ${outcome} acknowledgement`, async ({ page }) => {
   await cloud(page); await page.locator('#create-issue').click();
   await page.locator('[name="summary"]').fill('New item');
+  await page.locator('#save-issue').click();
   await expect.poll(() => count(page)).toBe(1);
   await page.locator('textarea[name="description"]').fill('Later description');
   await expect.poll(async () => (await drafts(page)).__new__?.input.description).toBe('Later description');

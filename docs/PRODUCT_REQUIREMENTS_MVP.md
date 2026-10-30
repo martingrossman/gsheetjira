@@ -66,7 +66,7 @@ Each requirement has an **ID** so Codex can cite it in implementation reports an
 ### FR-03 — Compact Quick Create (P0)
 
 - A centered, content-height creation dialog with focused title, optional description and compact controls for type, priority and context-appropriate status/assignee/due date.
-- Hide rare fields behind **More options**. The extended panel must not lose values entered in compact mode.
+- Hide rare fields behind **More options**, expanding the creation dialog in place. **Back to compact** restores the compact form; both directions preserve all values, including hidden advanced fields.
 - A visible Create button and working keyboard flow. Preserve `N` shortcut; a new `C` shortcut may be added if not conflicting.
 - Close/cancel must be predictable and warn only when entered content would be lost.
 

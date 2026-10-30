@@ -122,7 +122,7 @@ Backlog (8)                       To Do (3)
 - Primary `N` shortcut preserved; optionally add `C` as alias after collision checks.
 - Enter in one-line title submits unless IME/autocomplete is active; Ctrl/Cmd+Enter submits from long fields; Shift+Enter creates a newline in a multiline field.
 - Esc closes if empty; if edited, respect unsaved draft through a lightweight discard confirmation or safe draft retention.
-- **More options** reveals planning/hierarchy/effort fields in logical groups or opens the full drawer without losing data.
+- **More options** expands the new-issue dialog in place, keeping its center and revealing planning/hierarchy/effort fields (desktop expanded width up to ~720px, max ~85vh). **Back to compact** restores the compact layout. Preserve all entered values, including advanced fields hidden after collapsing. Mobile keeps the full-screen sheet in both modes. Existing issues continue to use the detailed drawer.
 
 ### 5.3 Detailed issue editor — deep work
 

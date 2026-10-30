@@ -59,6 +59,7 @@
   let parentOptionIndex = null;
   let edited = null, initialForm = '', formSaveTimer = null, formSession = 0, draggingId = null, sheetDraggingId = null, sheetDropPreview = null, ganttHierarchyDrag = null, timelineDrag = null, ganttResize = null, ganttPreviewTarget = null, suppressClickUntil = 0, ganttStoryClickTimer = null, toastTimer, epicDateFormValues = null;
   const form = $('#issue-form'), dialog = $('#issue-dialog');
+  let createStarted = false, issueReturnFocus = null;
   try { state.drafts = JSON.parse(localStorage.getItem(draftStorageKey) || '{}') || {}; } catch (ignore) { state.drafts = {}; }
   try { state.quickQueue = JSON.parse(localStorage.getItem(quickQueueStorageKey) || '[]') || []; } catch (ignore) { state.quickQueue = []; }
   try { state.pendingDuplicate = JSON.parse(localStorage.getItem(duplicateDraftStorageKey) || 'null'); } catch (ignore) { state.pendingDuplicate = null; }
@@ -1489,9 +1490,17 @@
     if (id && !original) return;
     edited = original ? { ...original } : null; epicDateFormValues = null;
     const restoredDraft = state.drafts[id || '__new__'];
-    const issue = { ...C.blank(), ...(original || defaults), ...(restoredDraft ? issueValues(restoredDraft.input) : {}) };
+    const createDefaults = { parentId: defaults.type === 'Epic' ? '' : state.epic || '', ...defaults };
+    const issue = { ...C.blank(), ...(original || createDefaults), ...(restoredDraft ? issueValues(restoredDraft.input) : {}) };
+    createStarted = Boolean(id || restoredDraft);
     if (edited && restoredDraft) edited.version = restoredDraft.version;
-    $('#dialog-id').textContent = id || 'NEW ISSUE'; $('#dialog-title').textContent = id ? 'A little more detail.' : 'Make the next move.';
+    dialog.classList.toggle('create-dialog', !id);
+    dialog.classList.toggle('quick-create', !id);
+    $('#create-more-options').hidden = Boolean(id);
+    $('#create-more-options').textContent = 'More options';
+    $('#create-more-options').setAttribute('aria-expanded', 'false');
+    $('#save-issue').textContent = id ? 'Save issue' : 'Create';
+    $('#dialog-id').textContent = id || 'NEW ISSUE'; $('#dialog-title').textContent = id ? 'A little more detail.' : 'Create issue';
     form.elements.type.innerHTML = options(C.types, issue.type);
     form.elements.taskTypeId.innerHTML = options(activityTypes(), issue.taskTypeId || 'algo');
     form.elements.status.innerHTML = options(C.statuses, issue.status);
@@ -1511,9 +1520,17 @@
     $('#duplicate-subtasks-label').textContent = `Also duplicate ${descendantIds.size} descendant ${descendantIds.size === 1 ? 'issue' : 'issues'}`;
     renderComments(id);
     if (formSaveTimer) clearTimeout(formSaveTimer); formSaveTimer = null;
-    initialForm = formSnapshot(); setFormSaveStatus(id ? 'Saved' : 'Not saved'); if (!dialog.open) dialog.showModal(); form.elements.summary.focus();
+    initialForm = formSnapshot(); setFormSaveStatus(id ? 'Saved' : 'Not yet saved');
+    if (!dialog.open) { if (!issueReturnFocus) issueReturnFocus = document.activeElement; dialog.showModal(); }
+    form.elements.summary.focus();
     renderDraftRecovery();
     loadIssueComments(id, formSession);
+  }
+  function setCreateExpanded(expanded) {
+    dialog.classList.toggle('quick-create', !expanded);
+    $('#create-more-options').textContent = expanded ? 'Back to compact' : 'More options';
+    $('#create-more-options').setAttribute('aria-expanded', String(expanded));
+    $('#dialog-title').textContent = expanded ? 'New issue details' : 'Create issue';
   }
   function closeIssue() {
     if (state.busy) return false;
@@ -1549,7 +1566,7 @@
   }
   async function autosaveForm() {
     formSaveTimer = null;
-    if (!dialog.open || state.busy || formSnapshot() === initialForm) return;
+    if (!dialog.open || state.busy || (!edited && !createStarted) || formSnapshot() === initialForm) return;
     if (!form.reportValidity()) { setFormSaveStatus('Complete required fields'); return; }
     const data = formInput(), submittedSnapshot = formSnapshot(), session = formSession; initialForm = submittedSnapshot; setFormSaveStatus('Saving…');
     try {
@@ -1570,7 +1587,7 @@
   async function saveForm(event) {
     event.preventDefault(); if (state.busy || !form.reportValidity()) return;
     if (formSaveTimer) clearTimeout(formSaveTimer); formSaveTimer = null;
-    if (formSnapshot() === initialForm) {
+    if (formSnapshot() === initialForm && (edited || createStarted)) {
       const session = formSession, key = saveQueueKeyFor(edited?.id), draftKeyValue = draftStorageKeyFor(edited?.id), pending = state.saveQueues[key], draft = state.drafts[draftKeyValue];
       if (!pending && !draft) { dialog.close(); edited = null; formSession++; return; }
       try {
@@ -1582,6 +1599,7 @@
     const data = formInput(), submittedSnapshot = formSnapshot(), session = formSession; setFormSaveStatus('Saving…');
     try {
       C.validate(C.prepare(data, edited, today(), new Date().toISOString()), state.issues);
+      createStarted = true;
       initialForm = submittedSnapshot;
       const saved = await persist(data, edited?.version);
       if (saved && dialog.open && formSession === session && (!edited?.id || edited.id === saved.id)) {
@@ -1643,10 +1661,12 @@
   $('#clear-filters').addEventListener('click', clearFilters);
   form.addEventListener('input', event => {
     if (!event.target.matches('input[type="text"], input:not([type]), textarea')) return;
+    if (!edited && !createStarted) { setFormSaveStatus('Not yet saved'); return; }
     if (formSaveTimer) clearTimeout(formSaveTimer); setFormSaveStatus('Unsaved changes'); formSaveTimer = setTimeout(autosaveForm, 700);
   });
   form.addEventListener('change', event => {
     if (!event.target.matches('select, input[type="date"], input[type="number"]')) return;
+    if (!edited && !createStarted) { setFormSaveStatus('Not yet saved'); return; }
     if (formSaveTimer) clearTimeout(formSaveTimer); setFormSaveStatus('Saving…'); formSaveTimer = setTimeout(autosaveForm, 0);
   });
   $('#swimlanes-toggle').addEventListener('change', event => { setSwimlanes(event.target.checked); render(); });
@@ -1658,8 +1678,41 @@
     const a = document.createElement('a'); a.href = url; a.download = `sheetflow-issues-${today()}.csv`; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('#close-dialog').addEventListener('click', closeIssue); $('#cancel-dialog').addEventListener('click', closeIssue);
+  $('#create-more-options').addEventListener('click', () => {
+    const expanded = dialog.classList.contains('quick-create');
+    setCreateExpanded(expanded);
+    (expanded ? form.elements.taskTypeId : form.elements.summary).focus();
+  });
   $('#duplicate-issue').addEventListener('click', duplicateOpenIssue);
   dialog.addEventListener('cancel', event => { event.preventDefault(); closeIssue(); });
+  dialog.addEventListener('keydown', event => {
+    if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+    const controls = Array.from(dialog.querySelectorAll('button,input,select,textarea,a[href],[tabindex]'))
+      .filter(element => element.tabIndex >= 0 && !element.matches(':disabled') && element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden');
+    const first = controls[0], last = controls[controls.length - 1];
+    if (!first) { event.preventDefault(); dialog.focus(); return; }
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog)) {
+      event.preventDefault(); first.focus();
+    }
+  });
+  dialog.addEventListener('close', () => {
+    if (dialog.open) return;
+    const target = issueReturnFocus?.isConnected && !issueReturnFocus.disabled ? issueReturnFocus : $('#create-issue');
+    issueReturnFocus = null; target?.focus({ preventScroll: true });
+  });
+  form.addEventListener('invalid', event => {
+    if (dialog.classList.contains('quick-create') && event.target.closest('.create-advanced')) setCreateExpanded(true);
+  }, true);
+  form.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    if (event.isComposing || event.keyCode === 229) { event.preventDefault(); return; }
+    if (event.altKey) return;
+    if (((event.ctrlKey || event.metaKey) && !event.shiftKey) || (event.target === form.elements.summary && !event.ctrlKey && !event.metaKey && !event.shiftKey)) {
+      event.preventDefault(); form.requestSubmit();
+    }
+  });
   form.addEventListener('submit', saveForm);
   form.elements.type.addEventListener('change', () => {
     const selected = form.elements.parentId.value;
