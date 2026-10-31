@@ -194,6 +194,16 @@ main{padding:16px 24px;min-width:0}.app-shell{min-width:0}
 
 <style>
 /* Quick Create uses the editor's fields and save pipeline without resetting drafts. */
+.editor-section{border-top:1px solid var(--line);margin:20px 0 0;padding-top:16px;min-width:0}
+.editor-section-title,.editor-secondary>summary{font-size:var(--text-body);font-weight:650;color:var(--ink);margin-bottom:12px}
+.editor-secondary>summary{cursor:pointer;width:fit-content;border-radius:var(--radius-control);padding:4px}
+.editor-secondary>summary:hover{background:var(--surface-muted)}
+.editor-section .form-grid{column-gap:12px;align-items:start}
+.editor-description{margin-top:20px}
+.editor-description textarea{min-height:120px}
+.quick-create .editor-section{border:0;margin:0;padding:0}
+.quick-create .editor-section-title{display:none}
+.quick-create .editor-description{margin-top:0}
 .issue-dialog.create-dialog{width:720px;max-width:calc(100vw - 32px);height:auto;max-height:85dvh;margin:auto;border:1px solid var(--line);border-radius:var(--radius-panel);overflow:hidden;box-shadow:0 20px 80px #0F172A26}
 .issue-dialog.create-dialog.quick-create{width:520px}
 .create-dialog form{height:auto;max-height:85dvh}

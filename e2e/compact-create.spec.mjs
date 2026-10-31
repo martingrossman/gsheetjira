@@ -50,7 +50,7 @@ for (const viewport of [{ width: 1366, height: 768 }, { width: 390, height: 844 
     }
     await page.locator('#create-more-options').click();
     await expect(dialog).not.toHaveClass(/quick-create/);
-    await expect(field(page, 'taskTypeId')).toBeFocused();
+    await expect(field(page, 'type')).toBeFocused();
     await expect(field(page, 'estimate')).toBeVisible();
     await expect(field(page, 'summary')).toHaveValue('Compact draft');
     await expect(field(page, 'description')).toHaveValue('Keep the context');

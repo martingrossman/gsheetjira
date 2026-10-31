@@ -1509,6 +1509,7 @@
     for (const field of C.fields) if (form.elements[field.key]) form.elements[field.key].value = issue[field.key];
     updateEpicDateFields();
     $('#form-error').hidden = true; $('#delete-issue').hidden = !id;
+    $('#editor-related').hidden = !id;
     $('#issue-metadata').innerHTML = id ? `Created ${escape(timestamp(issue.createdAt))}<br>Updated ${escape(timestamp(issue.updatedAt))}${issue.completedDate ? `<br>Completed ${escape(shortDate(issue.completedDate))}` : ''}` : '';
     const children = state.issues.filter(i => i.parentId === id && id);
     $('#child-issues').innerHTML = children.length ? `<h3 class="child-heading">Child issues (${children.length})</h3>${children.map(i => `<button type="button" class="child-link" data-child="${escape(i.id)}">${typeIcon(i.type)}<strong>${escape(i.id)}</strong> ${escape(i.summary)}</button>`).join('')}` : '';
@@ -1681,7 +1682,7 @@
   $('#create-more-options').addEventListener('click', () => {
     const expanded = dialog.classList.contains('quick-create');
     setCreateExpanded(expanded);
-    (expanded ? form.elements.taskTypeId : form.elements.summary).focus();
+    (expanded ? form.elements.type : form.elements.summary).focus();
   });
   $('#duplicate-issue').addEventListener('click', duplicateOpenIssue);
   dialog.addEventListener('cancel', event => { event.preventDefault(); closeIssue(); });
@@ -1704,6 +1705,7 @@
   });
   form.addEventListener('invalid', event => {
     if (dialog.classList.contains('quick-create') && event.target.closest('.create-advanced')) setCreateExpanded(true);
+    const section = event.target.closest('details'); if (section) section.open = true;
   }, true);
   form.addEventListener('keydown', event => {
     if (event.key !== 'Enter') return;

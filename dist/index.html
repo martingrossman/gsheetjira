@@ -201,6 +201,16 @@ main{padding:16px 24px;min-width:0}.app-shell{min-width:0}
 
 <style>
 /* Quick Create uses the editor's fields and save pipeline without resetting drafts. */
+.editor-section{border-top:1px solid var(--line);margin:20px 0 0;padding-top:16px;min-width:0}
+.editor-section-title,.editor-secondary>summary{font-size:var(--text-body);font-weight:650;color:var(--ink);margin-bottom:12px}
+.editor-secondary>summary{cursor:pointer;width:fit-content;border-radius:var(--radius-control);padding:4px}
+.editor-secondary>summary:hover{background:var(--surface-muted)}
+.editor-section .form-grid{column-gap:12px;align-items:start}
+.editor-description{margin-top:20px}
+.editor-description textarea{min-height:120px}
+.quick-create .editor-section{border:0;margin:0;padding:0}
+.quick-create .editor-section-title{display:none}
+.quick-create .editor-description{margin-top:0}
 .issue-dialog.create-dialog{width:720px;max-width:calc(100vw - 32px);height:auto;max-height:85dvh;margin:auto;border:1px solid var(--line);border-radius:var(--radius-panel);overflow:hidden;box-shadow:0 20px 80px #0F172A26}
 .issue-dialog.create-dialog.quick-create{width:520px}
 .create-dialog form{height:auto;max-height:85dvh}
@@ -264,12 +274,44 @@ main{padding:16px 24px;min-width:0}.app-shell{min-width:0}
       <div class="dialog-header"><div><span id="dialog-id" class="eyebrow">NEW ISSUE</span><h2 id="dialog-title">Make the next move.</h2></div><button type="button" id="close-dialog" class="icon-button" aria-label="Close issue">×</button></div>
       <div class="form-body"><div id="form-error" class="error-banner" role="alert" hidden></div><section id="form-draft-recovery" aria-label="Draft recovery" hidden></section>
         <label class="field">Summary <input name="summary" required maxlength="250" autocomplete="off" aria-describedby="form-error" placeholder="What needs to happen?"></label>
-        <label class="field">Description <textarea name="description" rows="4" maxlength="20000" placeholder="Add context, acceptance criteria, or helpful links…"></textarea></label>
-        <label class="field create-advanced">Activity type<select name="taskTypeId"></select></label>
-        <div class="form-grid"><label class="field">Issue type<select name="type"></select></label><label class="field">Status<select name="status"></select></label><label class="field">Priority<select name="priority"></select></label><label class="field">Parent issue<select name="parentId"></select></label><label class="field">Assignee<input name="assignee" list="people" maxlength="200" placeholder="Unassigned"></label><label class="field create-advanced">Reporter<input name="reporter" list="people" maxlength="200" placeholder="Your name"></label><label class="field create-advanced">Start date<input name="startDate" type="date" min="1900-01-01" max="2200-12-31"><small class="derived-date-note" hidden>Derived from scheduled child issues; edit their dates to adjust.</small></label><label class="field">Due date<input name="dueDate" type="date" min="1900-01-01" max="2200-12-31"><small class="derived-date-note" hidden>Derived from scheduled child issues; edit their dates to adjust.</small></label><label class="field create-advanced">Estimate (hours)<input name="estimate" type="number" min="0" step="0.25"></label><label class="field create-advanced">Time spent (hours)<input name="timeSpent" type="number" min="0" step="0.25"></label><label class="field create-advanced">Progress (%)<input name="progress" type="number" min="0" max="100" step="1"></label><label class="field create-advanced">Sprint<input name="sprint" list="sprints" maxlength="200" placeholder="e.g. Sprint 01"></label></div>
-        <label class="field create-advanced">Labels<input name="labels" maxlength="2000" placeholder="design, frontend, research"><small>Separate labels with commas.</small></label>
-        <label class="field create-advanced">Depends on<input name="dependencies" maxlength="2000" placeholder="PRJ-4, PRJ-5"><small>Issue IDs, separated by commas. Dependencies do not automatically move dates.</small></label>
-        <div id="issue-metadata" class="issue-metadata"></div><div id="comments-section" class="comments-section"></div><div id="child-issues"></div><label id="duplicate-subtasks-option" class="duplicate-subtasks-option" hidden><input id="duplicate-subtasks" type="checkbox"><span id="duplicate-subtasks-label">Also duplicate child issues</span></label>
+        <section id="editor-primary" class="editor-section" aria-labelledby="editor-primary-title">
+          <h3 id="editor-primary-title" class="editor-section-title">Properties</h3>
+          <div class="form-grid">
+            <label class="field">Status<select name="status"></select></label>
+            <label class="field">Priority<select name="priority"></select></label>
+            <label class="field">Issue type<select name="type"></select></label>
+            <label class="field">Assignee<input name="assignee" list="people" maxlength="200" placeholder="Unassigned"></label>
+            <label class="field">Parent issue<select name="parentId"></select></label>
+          </div>
+        </section>
+        <label class="field editor-description">Description <textarea name="description" rows="4" maxlength="20000" placeholder="Add context, acceptance criteria, or helpful links…"></textarea></label>
+        <section id="editor-planning" class="editor-section" aria-labelledby="editor-planning-title">
+          <h3 id="editor-planning-title" class="editor-section-title">Planning</h3>
+          <div class="form-grid">
+            <label class="field create-advanced">Start date<input name="startDate" type="date" min="1900-01-01" max="2200-12-31"><small class="derived-date-note" hidden>Derived from scheduled child issues; edit their dates to adjust.</small></label>
+            <label class="field">Due date<input name="dueDate" type="date" min="1900-01-01" max="2200-12-31"><small class="derived-date-note" hidden>Derived from scheduled child issues; edit their dates to adjust.</small></label>
+            <label class="field create-advanced">Sprint<input name="sprint" list="sprints" maxlength="200" placeholder="e.g. Sprint 01"></label>
+          </div>
+          <label class="field create-advanced">Labels<input name="labels" maxlength="2000" placeholder="design, frontend, research"><small>Separate labels with commas.</small></label>
+          <label class="field create-advanced">Depends on<input name="dependencies" maxlength="2000" placeholder="PRJ-4, PRJ-5"><small>Issue IDs, separated by commas. Dependencies do not automatically move dates.</small></label>
+        </section>
+        <details id="editor-effort" class="editor-section editor-secondary create-advanced" open>
+          <summary>Effort</summary>
+          <div class="form-grid">
+            <label class="field">Estimate (hours)<input name="estimate" type="number" min="0" step="0.25"></label>
+            <label class="field">Time spent (hours)<input name="timeSpent" type="number" min="0" step="0.25"></label>
+            <label class="field">Progress (%)<input name="progress" type="number" min="0" max="100" step="1"></label>
+          </div>
+        </details>
+        <details id="editor-metadata" class="editor-section editor-secondary create-advanced" open>
+          <summary>Metadata</summary>
+          <div class="form-grid">
+            <label class="field">Activity type<select name="taskTypeId"></select></label>
+            <label class="field">Reporter<input name="reporter" list="people" maxlength="200" placeholder="Your name"></label>
+          </div>
+          <div id="issue-metadata" class="issue-metadata"></div>
+        </details>
+        <div id="editor-related"><div id="child-issues"></div><div id="comments-section" class="comments-section"></div><label id="duplicate-subtasks-option" class="duplicate-subtasks-option" hidden><input id="duplicate-subtasks" type="checkbox"><span id="duplicate-subtasks-label">Also duplicate child issues</span></label></div>
       </div>
       <div class="dialog-footer"><div class="issue-footer-actions"><button type="button" id="create-more-options" class="button subtle" hidden>More options</button><button type="button" id="delete-issue" class="button danger" hidden>Delete issue</button><button type="button" id="duplicate-issue" class="button secondary" hidden title="Duplicate this issue; progress and time spent reset">Duplicate</button></div><div class="dialog-actions"><span id="form-save-status" role="status" aria-live="polite"></span><button type="button" id="cancel-dialog" class="button secondary">Cancel</button><button type="submit" id="save-issue" class="button primary">Save issue</button></div></div>
     </form>
@@ -2010,6 +2052,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
     for (const field of C.fields) if (form.elements[field.key]) form.elements[field.key].value = issue[field.key];
     updateEpicDateFields();
     $('#form-error').hidden = true; $('#delete-issue').hidden = !id;
+    $('#editor-related').hidden = !id;
     $('#issue-metadata').innerHTML = id ? `Created ${escape(timestamp(issue.createdAt))}<br>Updated ${escape(timestamp(issue.updatedAt))}${issue.completedDate ? `<br>Completed ${escape(shortDate(issue.completedDate))}` : ''}` : '';
     const children = state.issues.filter(i => i.parentId === id && id);
     $('#child-issues').innerHTML = children.length ? `<h3 class="child-heading">Child issues (${children.length})</h3>${children.map(i => `<button type="button" class="child-link" data-child="${escape(i.id)}">${typeIcon(i.type)}<strong>${escape(i.id)}</strong> ${escape(i.summary)}</button>`).join('')}` : '';
@@ -2182,7 +2225,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   $('#create-more-options').addEventListener('click', () => {
     const expanded = dialog.classList.contains('quick-create');
     setCreateExpanded(expanded);
-    (expanded ? form.elements.taskTypeId : form.elements.summary).focus();
+    (expanded ? form.elements.type : form.elements.summary).focus();
   });
   $('#duplicate-issue').addEventListener('click', duplicateOpenIssue);
   dialog.addEventListener('cancel', event => { event.preventDefault(); closeIssue(); });
@@ -2205,6 +2248,7 @@ if (typeof module !== 'undefined') module.exports = TrackerCore;
   });
   form.addEventListener('invalid', event => {
     if (dialog.classList.contains('quick-create') && event.target.closest('.create-advanced')) setCreateExpanded(true);
+    const section = event.target.closest('details'); if (section) section.open = true;
   }, true);
   form.addEventListener('keydown', event => {
     if (event.key !== 'Enter') return;
